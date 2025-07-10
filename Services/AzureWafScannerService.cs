@@ -110,7 +110,18 @@ namespace AzureFirewallManagerTools.Services
                 // 使用針對特定租用戶配置的 ArmClient。
                 // 移除 'using' 關鍵字，因為 ArmClient 不實作 IDisposable。
                 var clientForTenant = GetArmClientForSpecificTenant(tenantId);
-                var subscription = await clientForTenant.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(subscriptionId)).GetAsync();
+
+                // 確保 subscriptionId 被 Trim
+                string trimmedSubscriptionId = subscriptionId?.Trim();
+                if (string.IsNullOrEmpty(trimmedSubscriptionId))
+                {
+                    _logger.LogError("GetResourceGroupsWithWafPoliciesAsync called with empty or null subscriptionId. Returning empty list.");
+                    return resultList;
+                }
+
+                _logger.LogInformation($"嘗試獲取訂閱資源，TenantId: '{tenantId}', SubscriptionId: '{trimmedSubscriptionId}'");
+                var subscriptionResourceId = SubscriptionResource.CreateResourceIdentifier(trimmedSubscriptionId);
+                var subscription = await clientForTenant.GetSubscriptionResource(subscriptionResourceId).GetAsync();
                 _logger.LogInformation($"正在掃描訂閱 '{subscription.Value.Data.DisplayName}' ({subscriptionId}) 中的資源群組以查找 Front Door WAF 策略...");
 
                 await foreach (var resourceGroup in subscription.Value.GetResourceGroups())
@@ -159,30 +170,56 @@ namespace AzureFirewallManagerTools.Services
             try
             {
                 // 使用針對特定租用戶配置的 ArmClient。
-                // 移除 'using' 關鍵字，因為 ArmClient 不實作 IDisposable。
                 var clientForTenant = GetArmClientForSpecificTenant(tenantId);
-                var subscription = await clientForTenant.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(subscriptionId)).GetAsync();
-                var subscriptionName = subscription.Value.Data.DisplayName;
 
-                if (string.IsNullOrEmpty(resourceGroupName))
+                // 確保 subscriptionId 和 resourceGroupName 被 Trim
+                string trimmedSubscriptionId = subscriptionId?.Trim();
+                string trimmedResourceGroupName = resourceGroupName?.Trim();
+
+                // 判斷是掃描所有訂閱還是單個訂閱
+                if (string.IsNullOrEmpty(trimmedSubscriptionId))
                 {
-                    _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({subscriptionId}) 中的所有 Front Door WAF 策略...");
-                    await foreach (var rg in subscription.Value.GetResourceGroups())
+                    _logger.LogInformation($"正在掃描租用戶 '{tenantId}' 下的所有訂閱中的 Front Door WAF 策略...");
+                    await foreach (var sub in clientForTenant.GetSubscriptions())
                     {
-                        await ScanResourceGroupForFrontDoorWafPolicies(rg, subscriptionName, subscriptionId, allWafDetails);
+                        var currentSubscriptionName = sub.Data.DisplayName;
+                        var currentSubscriptionId = sub.Data.SubscriptionId;
+                        _logger.LogInformation($"  正在掃描訂閱: {currentSubscriptionName} ({currentSubscriptionId})");
+
+                        await foreach (var rg in sub.GetResourceGroups())
+                        {
+                            await ScanResourceGroupForFrontDoorWafPolicies(rg, currentSubscriptionName, currentSubscriptionId, allWafDetails);
+                        }
                     }
                 }
                 else
                 {
-                    _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({subscriptionId}) 中的資源群組 '{resourceGroupName}' 的 Front Door WAF 策略...");
-                    var resourceGroup = await subscription.Value.GetResourceGroupAsync(resourceGroupName);
-                    if (resourceGroup.HasValue)
+                    // 掃描單個指定訂閱
+                    _logger.LogInformation($"嘗試獲取訂閱資源，TenantId: '{tenantId}', SubscriptionId: '{trimmedSubscriptionId}'");
+                    var subscriptionResourceId = SubscriptionResource.CreateResourceIdentifier(trimmedSubscriptionId);
+                    var subscription = await clientForTenant.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(subscriptionResourceId)).GetAsync();
+                    var subscriptionName = subscription.Value.Data.DisplayName;
+
+                    if (string.IsNullOrEmpty(trimmedResourceGroupName))
                     {
-                        await ScanResourceGroupForFrontDoorWafPolicies(resourceGroup.Value, subscriptionName, subscriptionId, allWafDetails);
+                        _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({trimmedSubscriptionId}) 中的所有 Front Door WAF 策略...");
+                        await foreach (var rg in subscription.Value.GetResourceGroups())
+                        {
+                            await ScanResourceGroupForFrontDoorWafPolicies(rg, subscriptionName, trimmedSubscriptionId, allWafDetails);
+                        }
                     }
                     else
                     {
-                        _logger.LogWarning($"在訂閱 '{subscriptionId}' 中找不到資源群組 '{resourceGroupName}'。");
+                        _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({trimmedSubscriptionId}) 中的資源群組 '{trimmedResourceGroupName}' 的 Front Door WAF 策略...");
+                        var resourceGroup = await subscription.Value.GetResourceGroupAsync(trimmedResourceGroupName);
+                        if (resourceGroup.HasValue)
+                        {
+                            await ScanResourceGroupForFrontDoorWafPolicies(resourceGroup.Value, subscriptionName, trimmedSubscriptionId, allWafDetails);
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"在訂閱 '{trimmedSubscriptionId}' 中找不到資源群組 '{trimmedResourceGroupName}'。");
+                        }
                     }
                 }
             }

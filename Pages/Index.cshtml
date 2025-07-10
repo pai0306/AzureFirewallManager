@@ -187,7 +187,7 @@
                                 <strong>變數:</strong> @exclusion.MatchVariable, <strong>操作符:</strong> @exclusion.SelectorMatchOperator, <strong>選擇器:</strong> @exclusion.Selector
                                 @if (exclusion.ManagedRuleSetExclusions.Any())
                                 {
-                                    <h6 class="mt-2">針對託管規則集的排除:</h6>
+                                    <h6 class="mt-2 text-primary">針對託管規則集的排除:</h6>
                                     <ul class="list-group list-group-flush">
                                         @foreach (var mrsExclusion in exclusion.ManagedRuleSetExclusions)
                                         {
@@ -195,7 +195,7 @@
                                                 <strong>規則集:</strong> @mrsExclusion.RuleSetType @mrsExclusion.RuleSetVersion
                                                 @if (mrsExclusion.RuleGroupExclusions.Any())
                                                 {
-                                                    <h6 class="mt-2">針對規則群組的排除:</h6>
+                                                    <h6 class="mt-2 text-secondary">針對規則群組的排除:</h6>
                                                     <ul class="list-group list-group-flush">
                                                         @foreach (var rgExclusion in mrsExclusion.RuleGroupExclusions)
                                                         {
@@ -209,9 +209,44 @@
                                                         }
                                                     </ul>
                                                 }
+                                                @if (mrsExclusion.RuleGroupExclusions.Count == 0 && mrsExclusion.RuleSetType != "N/A (Direct Rule Group Exclusion)" && mrsExclusion.RuleSetType != "N/A (Direct Rule Exclusion)")
+                                                {
+                                                    <p class="text-muted">此規則集排除項無特定規則群組排除。</p>
+                                                }
                                             </li>
                                         }
                                     </ul>
+                                }
+                                @if (exclusion.ManagedRuleSetExclusions.Count == 0) // 如果沒有針對託管規則集的排除，但有直接的規則群組或規則排除
+                                {
+                                    @if (exclusion.RuleGroupExclusions.Any()) // 檢查直接的規則群組排除
+                                    {
+                                        <h6 class="mt-2 text-primary">直接針對規則群組的排除:</h6>
+                                        <ul class="list-group list-group-flush">
+                                            @foreach (var rgExclusion in exclusion.RuleGroupExclusions)
+                                            {
+                                                <li class="list-group-item list-group-item-info">
+                                                    <strong>群組:</strong> @rgExclusion.RuleGroupName
+                                                    @if (rgExclusion.Rules.Any())
+                                                    {
+                                                        <span> (規則 ID: @string.Join(", ", rgExclusion.Rules.Select(r => r.RuleId)))</span>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                    @if (exclusion.RuleExclusions.Any()) // 檢查直接的規則排除
+                                    {
+                                        <h6 class="mt-2 text-primary">直接針對特定規則的排除:</h6>
+                                        <ul class="list-group list-group-flush">
+                                            @foreach (var ruleExclusion in exclusion.RuleExclusions)
+                                            {
+                                                <li class="list-group-item list-group-item-info">
+                                                    <strong>規則 ID:</strong> @ruleExclusion.RuleId
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
                                 }
                             </li>
                         }
@@ -227,13 +262,13 @@
 }
 else if (!Model.ScanErrorOccurred && Model.IsTenantSelected) // 只有當選擇了租用戶但沒有找到 WAF 策略時才顯示此訊息
 {
-    <div class="alert alert-info mt-3" role="alert">
-        在所選租用戶 @(string.IsNullOrEmpty(Model.SelectedSubscriptionId) ? "中 (所有訂閱)" : $"的訂閱 '{Model.SelectedSubscriptionId}'") @(string.IsNullOrEmpty(Model.SelectedResourceGroupName) ? "中" : $"的資源群組 '{Model.SelectedResourceGroupName}' 中") 沒有找到任何 Azure WAF 策略。請確保您的權限設定正確，並且該租用戶/訂閱/資源群組中存在 Front Door WAF 策略。
-    </div>
+<div class="alert alert-info mt-3" role="alert">
+    在所選租用戶 @(string.IsNullOrEmpty(Model.SelectedSubscriptionId) ? "中 (所有訂閱)" : $"的訂閱 '{Model.SelectedSubscriptionId}'") @(string.IsNullOrEmpty(Model.SelectedResourceGroupName) ? "中" : $"的資源群組 '{Model.SelectedResourceGroupName}' 中") 沒有找到任何 Azure WAF 策略。請確保您的權限設定正確，並且該租用戶/訂閱/資源群組中存在 Front Door WAF 策略。
+</div>
 }
 else if (!Model.IsTenantSelected)
 {
-    <div class="alert alert-info mt-3" role="alert">
-        請從上方下拉選單中選擇一個 Azure AD 租用戶以開始掃描 WAF 策略。
-    </div>
+<div class="alert alert-info mt-3" role="alert">
+    請從上方下拉選單中選擇一個 Azure AD 租用戶以開始掃描 WAF 策略。
+</div>
 }
