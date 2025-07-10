@@ -1,0 +1,155 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Azure WAF 規則掃描器";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Azure WAF 規則掃描器</h1>
+    <p>掃描所有可存取的 Azure 訂閱中的 Web 應用程式防火牆 (WAF) 策略和規則。</p>
+
+    <form method="post" asp-page-handler="Scan">
+        <button type="submit" class="btn btn-primary mt-3">重新掃描 WAF 規則</button>
+    </form>
+</div>
+
+<hr />
+
+@if (Model.ScanErrorOccurred)
+{
+    <div class="alert alert-danger mt-3" role="alert">
+        掃描 Azure WAF 策略時發生錯誤。請檢查 App Service 的權限設定以及後台日誌。
+    </div>
+}
+
+@if (Model.WafPolicies != null && Model.WafPolicies.Any())
+{
+    <h2 class="mt-4">掃描結果 (@Model.WafPolicies.Count 個策略):</h2>
+
+    @foreach (var policy in Model.WafPolicies.OrderBy(p => p.SubscriptionName).ThenBy(p => p.ResourceGroupName).ThenBy(p => p.Name))
+    {
+        <div class="card mt-3">
+            <div class="card-header bg-info text-white">
+                <h3 class="mb-0">
+                    @policy.Name
+                    <small class="float-end">(@policy.Type)</small>
+                </h3>
+            </div>
+            <div class="card-body">
+                <p><strong>訂閱:</strong> @policy.SubscriptionName (@policy.SubscriptionId)</p>
+                <p><strong>資源群組:</strong> @policy.ResourceGroupName</p>
+                @if (!string.IsNullOrEmpty(policy.AssociatedResource) && policy.AssociatedResource != "N/A (Linked to Front Door instance)")
+                {
+                    <p><strong>關聯資源:</strong> @policy.AssociatedResource</p>
+                }
+
+                @* Managed Rules *@
+                <h4 class="mt-3">託管規則集:</h4>
+                @if (policy.FDManagedRules.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var managedRuleSet in policy.FDManagedRules)
+                        {
+                            <li class="list-group-item">
+                                <strong>類型:</strong> @managedRuleSet.RuleSetType, <strong>版本:</strong> @managedRuleSet.RuleSetVersion
+                                @if (managedRuleSet.RuleGroupOverrides.Any())
+                                {
+                                    <ul class="list-group list-group-flush mt-2">
+                                        @foreach (var groupOverride in managedRuleSet.RuleGroupOverrides)
+                                        {
+                                            <li class="list-group-item list-group-item-light">
+                                                <strong>群組:</strong> @groupOverride.RuleGroupName
+                                                @if (groupOverride.DisabledRules.Any())
+                                                {
+                                                    <span class="badge bg-warning text-dark ms-2">已禁用規則: @string.Join(", ", groupOverride.DisabledRules)</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-success ms-2">無禁用規則</span>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                                else
+                                {
+                                    <p class="text-muted">此託管規則集無特定群組覆寫。</p>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted">無託管規則集。</p>
+                }
+
+                @* Custom Rules *@
+                <h4 class="mt-3">自訂規則:</h4>
+                @if (policy.CustomRules.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var customRule in policy.CustomRules)
+                        {
+                            <li class="list-group-item">
+                                <strong>名稱:</strong> @customRule.Name, <strong>優先順序:</strong> @customRule.Priority, <strong>動作:</strong> @customRule.Action (@customRule.RuleType)
+                                @if (customRule.MatchConditions.Any())
+                                {
+                                    <ul class="list-group list-group-flush mt-2">
+                                        @foreach (var mc in customRule.MatchConditions)
+                                        {
+                                            <li class="list-group-item list-group-item-secondary">
+                                                <strong>匹配變數:</strong> @mc.MatchVariable
+                                                @if (!string.IsNullOrEmpty(mc.Selector))
+                                                {
+                                                    <span> (選擇器: @mc.Selector)</span>
+                                                }
+                                                , <strong>運算子:</strong> @mc.Operator
+                                                @if (mc.MatchValues.Any())
+                                                {
+                                                    <span>, <strong>值:</strong> @string.Join(", ", mc.MatchValues)</span>
+                                                }
+                                                @if (mc.Transforms.Any())
+                                                {
+                                                    <span>, <strong>轉換:</strong> @string.Join(", ", mc.Transforms)</span>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted">無自訂規則。</p>
+                }
+
+                @* Exclusions (Front Door only for this example's parsing) *@
+                @if (policy.Type == "Front Door WAF Policy" && policy.Exclusions.Any())
+                {
+                    <h4 class="mt-3">排除項:</h4>
+                    <ul class="list-group list-group-flush">
+                        @foreach (var exclusion in policy.Exclusions)
+                        {
+                            <li class="list-group-item">
+                                <strong>變數:</strong> @exclusion.MatchVariable, <strong>操作符:</strong> @exclusion.SelectorMatchOperator, <strong>選擇器:</strong> @exclusion.Selector
+                            </li>
+                        }
+                    </ul>
+                }
+                else if (policy.Type == "Front Door WAF Policy")
+                {
+                    <p class="text-muted mt-3">無排除項。</p>
+                }
+            </div>
+        </div>
+    }
+}
+else if (!Model.ScanErrorOccurred)
+{
+    <div class="alert alert-info mt-3" role="alert">
+        沒有找到任何 Azure WAF 策略。請確保您的 App Service 已配置適當的權限。
+    </div>
+}
