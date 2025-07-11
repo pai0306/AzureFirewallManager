@@ -37,6 +37,20 @@ namespace AzureFirewallManagerTools.Models
         public string RuleGroupName { get; set; } // 規則群組名稱 (例如："SQLInjection")。
         // 被禁用的規則 ID 列表。
         public List<string> DisabledRules { get; set; } = new List<string>();
+        // 明確列出被覆寫的規則 (ManagedRuleOverride)。
+        public List<ManagedRuleOverrideDetails> Rules { get; set; } = new List<ManagedRuleOverrideDetails>();
+    }
+
+    // ManagedRuleOverrideDetails 類別，表示被覆寫的單個託管規則。
+    public class ManagedRuleOverrideDetails
+    {
+        public string RuleId { get; set; }
+        public string State { get; set; } // 例如："Enabled", "Disabled"
+        // 注意：ManagedRuleOverride 在 SDK 中沒有直接的 Action 屬性。
+        // Action 通常在規則集或策略層級定義。
+        public int ExclustionCount { get; set; }
+        // 新增：針對此規則群組的排除項列表。
+        public List<ExclusionDetails> Exclusions { get; set; } = new List<ExclusionDetails>();
     }
 
     // CustomRuleDetails 類別：表示一個自訂規則。

@@ -62,23 +62,16 @@ namespace AzureFirewallManagerTools.Pages
         {
             await LoadTenantsAsync(); // 首先載入所有可用的租用戶。
 
-            // 如果有預選的租用戶 ID，則載入該租用戶下的訂閱和資源群組。
+            // 在此階段，不執行 WAF 策略掃描，只準備下拉選單。
             if (IsTenantSelected)
             {
                 await LoadSubscriptionsAsync(SelectedTenantId);
                 if (IsSubscriptionSelected)
                 {
                     await LoadResourceGroupsAsync(SelectedTenantId, SelectedSubscriptionId);
-                    // 如果同時有預選的資源群組，則執行掃描。
-                    if (IsResourceGroupSelected)
-                    {
-                        await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId, SelectedResourceGroupName);
-                    }
-                    else
-                    {
-                        // 如果只選了訂閱，但沒選資源群組，則掃描該訂閱下所有 WAF 策略
-                        await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId);
-                    }
+                    // 如果有預選的租用戶和訂閱，則在 OnGet 時執行一次掃描
+                    // 這樣當用戶直接訪問帶有參數的 URL 時，也能顯示數據。
+                    await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId, SelectedResourceGroupName);
                 }
             }
         }
@@ -97,8 +90,7 @@ namespace AzureFirewallManagerTools.Pages
             if (IsTenantSelected)
             {
                 await LoadSubscriptionsAsync(SelectedTenantId); // 載入所選租用戶下的訂閱。
-                // 預設掃描所選租用戶下的所有訂閱
-                await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId); // SelectedSubscriptionId 預設為空，表示掃描所有訂閱
+                // 選擇租用戶後，不立即掃描 WAF，等待訂閱選擇。
             }
             return Page(); // 返回當前頁面。
         }
@@ -118,12 +110,12 @@ namespace AzureFirewallManagerTools.Pages
                 if (IsSubscriptionSelected)
                 {
                     await LoadResourceGroupsAsync(SelectedTenantId, SelectedSubscriptionId); // 載入所選訂閱下的資源群組。
-                    // 預設掃描整個訂閱
+                    // 選擇訂閱後，執行 WAF 策略掃描。
                     await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId);
                 }
-                else // 如果選擇了 "請選擇訂閱" 或取消選擇
+                else // 如果選擇了 "所有訂閱" 或取消選擇
                 {
-                    // 掃描整個租用戶 (所有訂閱)
+                    // 如果選擇「所有訂閱」，也執行掃描
                     await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId); // SelectedSubscriptionId 為空
                 }
             }
@@ -223,10 +215,11 @@ namespace AzureFirewallManagerTools.Pages
         // PerformScanAsync 方法：執行 WAF 策略掃描的核心邏輯。
         private async Task PerformScanAsync(string tenantId, string subscriptionId, string resourceGroupName = null)
         {
-            if (string.IsNullOrEmpty(tenantId))
+            // 只有當同時選擇了租用戶和訂閱時才執行掃描。
+            if (string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(subscriptionId))
             {
                 WafPolicies.Clear();
-                ScanErrorOccurred = false; // 沒有選擇租用戶不算錯誤，只是沒有數據
+                ScanErrorOccurred = false; // 沒有足夠的選擇，不算錯誤，只是沒有數據
                 return;
             }
 

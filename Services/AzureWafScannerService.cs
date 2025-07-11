@@ -77,7 +77,7 @@ namespace AzureFirewallManagerTools.Services
                 _logger.LogInformation($"正在獲取租用戶 '{tenantId}' 下的所有可存取訂閱...");
                 // 使用針對特定租用戶配置的 ArmClient 來獲取訂閱列表。
                 // 這裡我們需要一個新的 ArmClient 實例，因為我們正在切換上下文到特定的租用戶。
-                var clientForTenant = GetArmClientForSpecificTenant(tenantId); // 使用新的輔助方法
+                var clientForTenant = GetArmClientForSpecificTenant(tenantId);
                 await foreach (var sub in clientForTenant.GetSubscriptions())
                 {
                     subscriptions.Add(new SubscriptionDetails
@@ -96,10 +96,11 @@ namespace AzureFirewallManagerTools.Services
         }
 
         /// <summary>
-        /// 獲取指定訂閱中包含 Front Door WAF 策略資源的資源群組。
+        /// 獲取指定訂閱中包含任何 WAF 策略資源的資源群組。
         /// </summary>
+        /// <param name="tenantId">訂閱所屬的租用戶 ID。</param>
         /// <param name="subscriptionId">要掃描的訂閱 ID。</param>
-        /// <returns>包含 Front Door WAF 策略的資源群組列表。</returns>
+        /// <returns>包含 WAF 策略的資源群組列表。</returns>
         public async Task<List<ResourceGroupDetails>> GetResourceGroupsWithWafPoliciesAsync(string tenantId, string subscriptionId)
         {
             var resourceGroupsWithWaf = new HashSet<string>(); // 使用 HashSet 避免重複
@@ -108,21 +109,23 @@ namespace AzureFirewallManagerTools.Services
             try
             {
                 // 使用針對特定租用戶配置的 ArmClient。
-                // 移除 'using' 關鍵字，因為 ArmClient 不實作 IDisposable。
                 var clientForTenant = GetArmClientForSpecificTenant(tenantId);
 
-                // 確保 subscriptionId 被 Trim
+                // 確保 subscriptionId 被 Trim 且不為空
                 string trimmedSubscriptionId = subscriptionId?.Trim();
                 if (string.IsNullOrEmpty(trimmedSubscriptionId))
                 {
-                    _logger.LogError("GetResourceGroupsWithWafPoliciesAsync called with empty or null subscriptionId. Returning empty list.");
+                    _logger.LogError("GetResourceGroupsWithWafPoliciesAsync called with empty or null subscriptionId. Cannot retrieve resource groups without a valid subscription ID. Returning empty list.");
                     return resultList;
                 }
 
                 _logger.LogInformation($"嘗試獲取訂閱資源，TenantId: '{tenantId}', SubscriptionId: '{trimmedSubscriptionId}'");
+
+                // 使用 SubscriptionResource.CreateResourceIdentifier 確保 ID 格式正確
                 var subscriptionResourceId = SubscriptionResource.CreateResourceIdentifier(trimmedSubscriptionId);
                 var subscription = await clientForTenant.GetSubscriptionResource(subscriptionResourceId).GetAsync();
-                _logger.LogInformation($"正在掃描訂閱 '{subscription.Value.Data.DisplayName}' ({subscriptionId}) 中的資源群組以查找 Front Door WAF 策略...");
+
+                _logger.LogInformation($"成功獲取訂閱 '{subscription.Value.Data.DisplayName}' ({trimmedSubscriptionId})。正在掃描資源群組...");
 
                 await foreach (var resourceGroup in subscription.Value.GetResourceGroups())
                 {
@@ -160,9 +163,10 @@ namespace AzureFirewallManagerTools.Services
         /// <summary>
         /// 掃描指定訂閱或指定資源群組中的 Front Door WAF 策略。
         /// </summary>
+        /// <param name="tenantId">訂閱所屬的租用戶 ID。</param>
         /// <param name="subscriptionId">要掃描的訂閱 ID。</param>
         /// <param name="resourceGroupName">可選：要掃描的資源群組名稱。如果為 null，則掃描整個訂閱。</param>
-        /// <returns>Front Door WAF 策略列表。</returns>
+        /// <returns>WAF 策略列表。</returns>
         public async Task<List<WafPolicyDetails>> ScanWafPoliciesAsync(string tenantId, string subscriptionId, string resourceGroupName = null)
         {
             var allWafDetails = new List<WafPolicyDetails>();
@@ -173,52 +177,79 @@ namespace AzureFirewallManagerTools.Services
                 var clientForTenant = GetArmClientForSpecificTenant(tenantId);
 
                 // 確保 subscriptionId 和 resourceGroupName 被 Trim
-                string trimmedSubscriptionId = subscriptionId?.Trim();
-                string trimmedResourceGroupName = resourceGroupName?.Trim();
+                string currentSubscriptionId = subscriptionId?.Trim();
+                string currentResourceGroupName = resourceGroupName?.Trim();
 
-                // 判斷是掃描所有訂閱還是單個訂閱
-                if (string.IsNullOrEmpty(trimmedSubscriptionId))
+                _logger.LogInformation($"ScanWafPoliciesAsync initiated. Tenant: '{tenantId}', Subscription (param): '{subscriptionId}', Trimmed Sub: '{currentSubscriptionId}', Trimmed RG: '{currentResourceGroupName}'");
+
+                // 如果沒有指定訂閱 ID (即選擇了「所有訂閱」)
+                if (string.IsNullOrEmpty(currentSubscriptionId))
                 {
-                    _logger.LogInformation($"正在掃描租用戶 '{tenantId}' 下的所有訂閱中的 Front Door WAF 策略...");
+                    _logger.LogInformation($"Scanning all subscriptions for tenant '{tenantId}'.");
                     await foreach (var sub in clientForTenant.GetSubscriptions())
                     {
-                        var currentSubscriptionName = sub.Data.DisplayName;
-                        var currentSubscriptionId = sub.Data.SubscriptionId;
-                        _logger.LogInformation($"  正在掃描訂閱: {currentSubscriptionName} ({currentSubscriptionId})");
+                        var currentSubName = sub.Data.DisplayName;
+                        var currentSubId = sub.Data.SubscriptionId;
+                        _logger.LogInformation($"  Processing subscription: {currentSubName} ({currentSubId})");
 
-                        await foreach (var rg in sub.GetResourceGroups())
+                        // 如果指定了資源群組，則需要在該訂閱內進行篩選
+                        if (!string.IsNullOrEmpty(currentResourceGroupName))
                         {
-                            await ScanResourceGroupForFrontDoorWafPolicies(rg, currentSubscriptionName, currentSubscriptionId, allWafDetails);
+                            _logger.LogInformation($"    Filtering by resource group '{currentResourceGroupName}' within subscription '{currentSubId}'.");
+                            var rg = await sub.GetResourceGroupAsync(currentResourceGroupName);
+                            if (rg.HasValue)
+                            {
+                                await ScanResourceGroupForFrontDoorWafPolicies(rg.Value, currentSubName, currentSubId, allWafDetails);
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"    Resource group '{currentResourceGroupName}' not found in subscription '{currentSubId}'.");
+                            }
+                        }
+                        else // 沒有指定資源群組，掃描該訂閱下所有資源群組
+                        {
+                            await foreach (var rg in sub.GetResourceGroups())
+                            {
+                                await ScanResourceGroupForFrontDoorWafPolicies(rg, currentSubName, currentSubId, allWafDetails);
+                            }
                         }
                     }
                 }
-                else
+                else // 指定了單個訂閱 ID
                 {
-                    // 掃描單個指定訂閱
-                    _logger.LogInformation($"嘗試獲取訂閱資源，TenantId: '{tenantId}', SubscriptionId: '{trimmedSubscriptionId}'");
-                    var subscriptionResourceId = SubscriptionResource.CreateResourceIdentifier(trimmedSubscriptionId);
-                    var subscription = await clientForTenant.GetSubscriptionResource(new Azure.Core.ResourceIdentifier(subscriptionResourceId)).GetAsync();
-                    var subscriptionName = subscription.Value.Data.DisplayName;
+                    _logger.LogInformation($"Scanning specific subscription '{currentSubscriptionId}' for tenant '{tenantId}'.");
 
-                    if (string.IsNullOrEmpty(trimmedResourceGroupName))
+                    // 再次防禦性檢查，確保訂閱 ID 在這裡不會是空的
+                    if (string.IsNullOrEmpty(currentSubscriptionId))
                     {
-                        _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({trimmedSubscriptionId}) 中的所有 Front Door WAF 策略...");
-                        await foreach (var rg in subscription.Value.GetResourceGroups())
+                        _logger.LogError($"CRITICAL ERROR: currentSubscriptionId is unexpectedly empty in the single subscription scan path for tenant '{tenantId}'. This indicates a logical flow issue or data corruption.");
+                        return allWafDetails;
+                    }
+
+                    // 使用 SubscriptionResource.CreateResourceIdentifier 確保 ID 格式正確
+                    var subscriptionResourceId = SubscriptionResource.CreateResourceIdentifier(currentSubscriptionId);
+                    var subscriptionResource = await clientForTenant.GetSubscriptionResource(subscriptionResourceId).GetAsync();
+                    var subscriptionName = subscriptionResource.Value.Data.DisplayName;
+
+                    if (string.IsNullOrEmpty(currentResourceGroupName))
+                    {
+                        _logger.LogInformation($"Scanning all resource groups in subscription '{subscriptionName}' ({currentSubscriptionId}).");
+                        await foreach (var rg in subscriptionResource.Value.GetResourceGroups())
                         {
-                            await ScanResourceGroupForFrontDoorWafPolicies(rg, subscriptionName, trimmedSubscriptionId, allWafDetails);
+                            await ScanResourceGroupForFrontDoorWafPolicies(rg, subscriptionName, currentSubscriptionId, allWafDetails);
                         }
                     }
                     else
                     {
-                        _logger.LogInformation($"正在掃描訂閱 '{subscriptionName}' ({trimmedSubscriptionId}) 中的資源群組 '{trimmedResourceGroupName}' 的 Front Door WAF 策略...");
-                        var resourceGroup = await subscription.Value.GetResourceGroupAsync(trimmedResourceGroupName);
+                        _logger.LogInformation($"Scanning specific resource group '{currentResourceGroupName}' in subscription '{subscriptionName}' ({currentSubscriptionId}).");
+                        var resourceGroup = await subscriptionResource.Value.GetResourceGroupAsync(currentResourceGroupName);
                         if (resourceGroup.HasValue)
                         {
-                            await ScanResourceGroupForFrontDoorWafPolicies(resourceGroup.Value, subscriptionName, trimmedSubscriptionId, allWafDetails);
+                            await ScanResourceGroupForFrontDoorWafPolicies(resourceGroup.Value, subscriptionName, currentSubscriptionId, allWafDetails);
                         }
                         else
                         {
-                            _logger.LogWarning($"在訂閱 '{trimmedSubscriptionId}' 中找不到資源群組 '{trimmedResourceGroupName}'。");
+                            _logger.LogWarning($"Resource group '{currentResourceGroupName}' not found in subscription '{currentSubscriptionId}'.");
                         }
                     }
                 }
@@ -255,8 +286,6 @@ namespace AzureFirewallManagerTools.Services
             }
         }
 
-        // 移除 MapAppGatewayWafPolicy 方法，因為不再處理 Application Gateway WAF。
-
         // MapFrontDoorWafPolicy 方法：將 Front Door WAF 策略數據映射到 WafPolicyDetails。
         private WafPolicyDetails MapFrontDoorWafPolicy(FrontDoorWebApplicationFirewallPolicyData policy, string subscriptionName, string subscriptionId, string resourceGroupName)
         {
@@ -287,7 +316,26 @@ namespace AzureFirewallManagerTools.Services
                         var groupDetails = new RuleGroupOverrideDetails
                         {
                             RuleGroupName = groupOverride.RuleGroupName,
-                            DisabledRules = groupOverride.Rules?.Where(r => r.EnabledState.Value.Equals(Azure.ResourceManager.FrontDoor.Models.ManagedRuleEnabledState.Disabled)).Select(r => r.RuleId).ToList() ?? new List<string>()
+                            // 獲取被禁用的規則 ID。
+                            DisabledRules = groupOverride.Rules?.Where(r => r.EnabledState.Equals(Azure.ResourceManager.FrontDoor.Models.ManagedRuleEnabledState.Disabled)).Select(r => r.RuleId).ToList() ?? new List<string>(),
+                            // 新增：映射 ManagedRuleOverride 列表
+                            Rules = groupOverride.Rules?.Select(r => new ManagedRuleOverrideDetails
+                            {
+                                RuleId = r.RuleId,
+                                State = r.EnabledState.ToString(),
+                                ExclustionCount = r.Exclusions?.Count ?? 0, // 新增：計算排除項數量
+                                Exclusions = r.Exclusions?.Select(e =>
+                                {
+                                    var exclusionDetails = new ExclusionDetails
+                                    {
+                                        MatchVariable = e.MatchVariable.ToString(),
+                                        SelectorMatchOperator = e.SelectorMatchOperator.ToString(),
+                                        Selector = e.Selector
+                                    };
+
+                                    return exclusionDetails;
+                                }).ToList() ?? new List<ExclusionDetails>()
+                            }).ToList() ?? new List<ManagedRuleOverrideDetails>()
                         };
                         managedRuleSetDetails.RuleGroupOverrides.Add(groupDetails);
                     }
@@ -314,71 +362,6 @@ namespace AzureFirewallManagerTools.Services
                     }).ToList() ?? new List<MatchConditionDetails>()
                 }).ToList();
             }
-
-            // Exclusions (Front Door)
-            /*if (policy.Exclusions != null)
-            {
-                details.Exclusions = policy.Exclusions.Select(e =>
-                {
-                    var exclusionDetails = new ExclusionDetails
-                    {
-                        MatchVariable = e.MatchVariable.ToString(),
-                        SelectorMatchOperator = e.SelectorMatchOperator.ToString(),
-                        Selector = e.Selector
-                    };
-
-                    if (e.ExclusionManagedRuleSets != null)
-                    {
-                        exclusionDetails.ManagedRuleSetExclusions = e.ExclusionManagedRuleSets.Select(mrs => new ManagedRuleSetExclusionDetails
-                        {
-                            RuleSetType = mrs.RuleSetType,
-                            RuleSetVersion = mrs.RuleSetVersion,
-                            RuleGroupExclusions = mrs.RuleGroupExclusions?.Select(rg => new RuleGroupExclusionDetails
-                            {
-                                RuleGroupName = rg.RuleGroupName,
-                                Rules = rg.Rules?.Select(r => new RuleExclusionDetails { RuleId = r.RuleId }).ToList() ?? new List<RuleExclusionDetails>()
-                            }).ToList() ?? new List<RuleGroupExclusionDetails>()
-                        }).ToList();
-                    }
-
-                    // For direct rule group exclusions not nested under a managed ruleset exclusion
-                    if (e.ExclusionRuleGroups != null && !e.ExclusionRuleGroups.Any(erg => exclusionDetails.ManagedRuleSetExclusions.Any(mrs => mrs.RuleGroupExclusions.Any(rg => rg.RuleGroupName == erg.RuleGroupName))))
-                    {
-                        var directRgExclusion = new ManagedRuleSetExclusionDetails
-                        {
-                            RuleSetType = "N/A (Direct Rule Group Exclusion)",
-                            RuleSetVersion = "N/A",
-                            RuleGroupExclusions = e.ExclusionRuleGroups.Select(rg => new RuleGroupExclusionDetails
-                            {
-                                RuleGroupName = rg.RuleGroupName,
-                                Rules = rg.Rules?.Select(r => new RuleExclusionDetails { RuleId = r.RuleId }).ToList() ?? new List<RuleExclusionDetails>()
-                            }).ToList()
-                        };
-                        exclusionDetails.ManagedRuleSetExclusions.Add(directRgExclusion);
-                    }
-
-                    // For direct rule exclusions not nested under a managed ruleset or rule group exclusion
-                    if (e.ExclusionRules != null && !e.ExclusionRules.Any(er => exclusionDetails.ManagedRuleSetExclusions.Any(mrs => mrs.RuleGroupExclusions.Any(rg => rg.Rules.Any(r => r.RuleId == er.RuleId)))))
-                    {
-                        var directRuleExclusion = new ManagedRuleSetExclusionDetails
-                        {
-                            RuleSetType = "N/A (Direct Rule Exclusion)",
-                            RuleSetVersion = "N/A",
-                            RuleGroupExclusions = new List<RuleGroupExclusionDetails>
-                            {
-                                new RuleGroupExclusionDetails
-                                {
-                                    RuleGroupName = "N/A (Specific Rule Exclusion)",
-                                    Rules = e.ExclusionRules.Select(r => new RuleExclusionDetails { RuleId = r.RuleId }).ToList()
-                                }
-                            }
-                        };
-                        exclusionDetails.ManagedRuleSetExclusions.Add(directRuleExclusion);
-                    }
-
-                    return exclusionDetails;
-                }).ToList();
-            }*/
 
             return details;
         }
