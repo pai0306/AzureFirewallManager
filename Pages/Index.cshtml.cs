@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace AzureFirewallManagerTools.Pages
@@ -40,6 +41,7 @@ namespace AzureFirewallManagerTools.Pages
 
         // 標記掃描是否發生錯誤，用於在 UI 上顯示錯誤訊息。
         public bool ScanErrorOccurred { get; set; } = false;
+        public string ErrorMessage { get; set; }
 
         // 標記是否已選擇租用戶。
         public bool IsTenantSelected => !string.IsNullOrEmpty(SelectedTenantId);
@@ -63,7 +65,7 @@ namespace AzureFirewallManagerTools.Pages
             await LoadTenantsAsync(); // 首先載入所有可用的租用戶。
 
             // 在此階段，不執行 WAF 策略掃描，只準備下拉選單。
-            if (IsTenantSelected)
+            /*if (IsTenantSelected)
             {
                 await LoadSubscriptionsAsync(SelectedTenantId);
                 if (IsSubscriptionSelected)
@@ -73,53 +75,81 @@ namespace AzureFirewallManagerTools.Pages
                     // 這樣當用戶直接訪問帶有參數的 URL 時，也能顯示數據。
                     await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId, SelectedResourceGroupName);
                 }
-            }
+            }*/
         }
 
         // OnPostSelectTenantAsync 方法：處理租用戶選擇事件。
         public async Task<IActionResult> OnPostSelectTenantAsync()
         {
-            await LoadTenantsAsync(); // 重新載入租用戶列表。
+            //await LoadTenantsAsync(); // 重新載入租用戶列表。
             AvailableSubscriptions.Clear(); // 清空訂閱列表。
             AvailableResourceGroups.Clear(); // 清空資源群組列表。
             WafPolicies.Clear(); // 清空 WAF 策略列表。
             ScanErrorOccurred = false;
+            ErrorMessage = null;
             SelectedSubscriptionId = ""; // 重置訂閱選擇。
             SelectedResourceGroupName = ""; // 重置資源群組選擇。
 
-            if (IsTenantSelected)
+            if (!string.IsNullOrEmpty(SelectedTenantId))
             {
-                await LoadSubscriptionsAsync(SelectedTenantId); // 載入所選租用戶下的訂閱。
-                // 選擇租用戶後，不立即掃描 WAF，等待訂閱選擇。
+                try
+                {
+                    await LoadSubscriptionsAsync(SelectedTenantId);
+                    // 根據設計，選擇租戶後不立即掃描 WAF
+                    // WafPolicies = new List<WafPolicyDetails>(); // 確保清空
+                    return new JsonResult(new
+                    {
+                        Success = true,
+                        Subscriptions = AvailableSubscriptions
+                    });
+                }
+                catch (Exception ex)
+                {
+                    ScanErrorOccurred = true;
+                    ErrorMessage = $"載入訂閱時發生錯誤: {ex.Message}";
+                    Console.WriteLine(ErrorMessage);
+                    return new JsonResult(new { Success = false, ErrorMessage = ErrorMessage });
+                }
             }
-            return Page(); // 返回當前頁面。
+            return new JsonResult(new { Success = true, Subscriptions = new List<object>() }); // 如果沒有選擇租戶，返回空列表
         }
 
         // OnPostSelectSubscriptionAsync 方法：處理訂閱選擇事件。
         public async Task<IActionResult> OnPostSelectSubscriptionAsync()
         {
-            await LoadTenantsAsync(); // 重新載入租用戶列表。
-            if (IsTenantSelected)
-            {
-                await LoadSubscriptionsAsync(SelectedTenantId); // 重新載入訂閱列表。
-                AvailableResourceGroups.Clear(); // 清空資源群組列表。
-                WafPolicies.Clear(); // 清空 WAF 策略列表。
-                ScanErrorOccurred = false;
-                SelectedResourceGroupName = ""; // 重置資源群組選擇。
+            //await LoadTenantsAsync(); // 重新載入租用戶列表。
+            //await LoadSubscriptionsAsync(SelectedTenantId); // 重新載入訂閱列表。
+            AvailableResourceGroups.Clear(); // 清空資源群組列表。
+            WafPolicies.Clear(); // 清空 WAF 策略列表。
+            ScanErrorOccurred = false;
+            SelectedResourceGroupName = ""; // 重置資源群組選擇。
 
-                if (IsSubscriptionSelected)
+            if (!string.IsNullOrWhiteSpace(SelectedSubscriptionId))
+            {
+                try
                 {
                     await LoadResourceGroupsAsync(SelectedTenantId, SelectedSubscriptionId); // 載入所選訂閱下的資源群組。
+
                     // 選擇訂閱後，執行 WAF 策略掃描。
                     await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId);
+
+                    return new JsonResult(new
+                    {
+                        Success = true,
+                        ResourceGroups = AvailableResourceGroups
+                    });
                 }
-                else // 如果選擇了 "所有訂閱" 或取消選擇
+                catch (Exception ex)
                 {
-                    // 如果選擇「所有訂閱」，也執行掃描
-                    await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId); // SelectedSubscriptionId 為空
+                    ScanErrorOccurred = true;
+                    ErrorMessage = $"載入訂閱時發生錯誤: {ex.Message}";
+                    Console.WriteLine(ErrorMessage);
+                    return new JsonResult(new { Success = false, ErrorMessage = ErrorMessage });
                 }
             }
-            return Page(); // 返回當前頁面。
+            else {
+                return new JsonResult(new { Success = true, ResourceGroups = new List<object>() }); // 如果沒有選擇訂閱，返回空列表
+            }
         }
 
         // OnPostSelectResourceGroupAsync 方法：處理資源群組選擇事件。

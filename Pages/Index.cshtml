@@ -16,50 +16,33 @@
         <div class="row mb-3 align-items-end">
             <div class="col-md-4">
                 <label for="SelectedTenantId" class="form-label">選擇租用戶:</label>
-                <select asp-for="SelectedTenantId" asp-items="Model.AvailableTenants"
-                        class="form-select" onchange="document.getElementById('selectTenantButton').click();">
+                <select asp-for="SelectedTenantId" asp-items="Model.AvailableTenants" class="form-select">
                 </select>
-                <button type="submit" id="selectTenantButton" asp-page-handler="SelectTenant" style="display:none;"></button>
             </div>
             <div class="col-md-4">
-                @if (Model.IsTenantSelected)
-                {
-                    <label for="SelectedSubscriptionId" class="form-label">選擇訂閱:</label>
-                    <select asp-for="SelectedSubscriptionId" asp-items="Model.AvailableSubscriptions"
-                            class="form-select" onchange="document.getElementById('selectSubscriptionButton').click();">
-                    </select>
-                    <button type="submit" id="selectSubscriptionButton" asp-page-handler="SelectSubscription" style="display:none;"></button>
-                }
-                else
-                {
-                    <label for="SelectedSubscriptionId" class="form-label text-muted">選擇訂閱:</label>
-                    <select class="form-select" disabled>
-                        <option>--- 請先選擇租用戶 ---</option>
-                    </select>
-                }
+                <label for="SelectedSubscriptionId" class="form-label">選擇訂閱:</label>
+                <select asp-for="SelectedSubscriptionId" class="form-select" disabled>
+                    <option>--- 請先選擇租用戶 ---</option>
+                </select>
             </div>
             <div class="col-md-4">
-                @if (Model.IsSubscriptionSelected)
-                {
-                    <label for="SelectedResourceGroupName" class="form-label">選擇資源群組:</label>
-                    <select asp-for="SelectedResourceGroupName" asp-items="Model.AvailableResourceGroups"
-                            class="form-select" onchange="document.getElementById('selectResourceGroupButton').click();">
-                    </select>
-                    <button type="submit" id="selectResourceGroupButton" asp-page-handler="SelectResourceGroup" style="display:none;"></button>
-                }
-                else
-                {
-                    <label for="SelectedResourceGroupName" class="form-label text-muted">選擇資源群組:</label>
-                    <select class="form-select" disabled>
-                        <option>--- 請先選擇訂閱 ---</option>
-                    </select>
-                }
+                <label for="SelectedResourceGroupName" class="form-label">選擇資源群組:</label>
+                <select asp-for="SelectedResourceGroupName" class="form-select" disabled>
+                    <option>--- 請先選擇訂閱 ---</option>
+                </select>
             </div>
         </div>
     </form>
 </div>
 
 <hr />
+
+<div id="loadingSpinner" style="display:none; text-align:center; margin-top:20px;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p>正在載入 WAF 策略和相關選項...</p>
+</div>
 
 <!-- 錯誤訊息顯示區塊 -->
 @if (Model.ScanErrorOccurred)
@@ -361,16 +344,11 @@ else if (!Model.ScanErrorOccurred && Model.IsTenantSelected && Model.IsSubscript
 </div>
 }
 @* 如果沒有選擇租用戶，則顯示此訊息 *@
-else if (!Model.IsTenantSelected)
-{
-<div class="alert alert-info mt-3" role="alert">
+<div class="alert alert-info mt-3" role="alert" id="IsTenantSelected">
     請從上方下拉選單中選擇一個 Azure AD 租用戶以開始掃描 WAF 策略。
 </div>
-}
+
 @* 如果選擇了租用戶但沒有選擇訂閱，則顯示此訊息 *@
-else if (Model.IsTenantSelected && !Model.IsSubscriptionSelected)
-{
-<div class="alert alert-info mt-3" role="alert">
+<div class="alert alert-info mt-3" role="alert" id="IsSubScriptionSeleted" style="display: none;">
     請從上方下拉選單中選擇一個 Azure 訂閱以開始掃描 WAF 策略。
 </div>
-}
