@@ -1,8 +1,11 @@
 using AzureFirewallManagerTools.Models;
 using AzureFirewallManagerTools.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -81,7 +84,6 @@ namespace AzureFirewallManagerTools.Pages
         // OnPostSelectTenantAsync 方法：處理租用戶選擇事件。
         public async Task<IActionResult> OnPostSelectTenantAsync()
         {
-            //await LoadTenantsAsync(); // 重新載入租用戶列表。
             AvailableSubscriptions.Clear(); // 清空訂閱列表。
             AvailableResourceGroups.Clear(); // 清空資源群組列表。
             WafPolicies.Clear(); // 清空 WAF 策略列表。
@@ -96,7 +98,7 @@ namespace AzureFirewallManagerTools.Pages
                 {
                     await LoadSubscriptionsAsync(SelectedTenantId);
                     // 根據設計，選擇租戶後不立即掃描 WAF
-                    // WafPolicies = new List<WafPolicyDetails>(); // 確保清空
+                    WafPolicies = new List<WafPolicyDetails>(); // 確保清空
                     return new JsonResult(new
                     {
                         Success = true,
@@ -117,8 +119,6 @@ namespace AzureFirewallManagerTools.Pages
         // OnPostSelectSubscriptionAsync 方法：處理訂閱選擇事件。
         public async Task<IActionResult> OnPostSelectSubscriptionAsync()
         {
-            //await LoadTenantsAsync(); // 重新載入租用戶列表。
-            //await LoadSubscriptionsAsync(SelectedTenantId); // 重新載入訂閱列表。
             AvailableResourceGroups.Clear(); // 清空資源群組列表。
             WafPolicies.Clear(); // 清空 WAF 策略列表。
             ScanErrorOccurred = false;
@@ -133,10 +133,15 @@ namespace AzureFirewallManagerTools.Pages
                     // 選擇訂閱後，執行 WAF 策略掃描。
                     await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId);
 
+                    // 將 WAF 策略表格渲染為 HTML 字串
+                    // 需要一個 _WafPoliciesTablePartial.cshtml 局部視圖
+                    var wafPoliciesHtml = await RenderPartialViewToStringAsync("_WafPoliciesPartial", WafPolicies);
+
                     return new JsonResult(new
                     {
                         Success = true,
-                        ResourceGroups = AvailableResourceGroups
+                        ResourceGroups = AvailableResourceGroups,
+                        WafPoliciesHtml = wafPoliciesHtml
                     });
                 }
                 catch (Exception ex)
@@ -155,29 +160,36 @@ namespace AzureFirewallManagerTools.Pages
         // OnPostSelectResourceGroupAsync 方法：處理資源群組選擇事件。
         public async Task<IActionResult> OnPostSelectResourceGroupAsync()
         {
-            await LoadTenantsAsync(); // 重新載入租用戶列表。
-            if (IsTenantSelected)
+            WafPolicies.Clear(); // 清空 WAF 策略列表。
+            ScanErrorOccurred = false;
+
+            if (!string.IsNullOrWhiteSpace(SelectedSubscriptionId))
             {
-                await LoadSubscriptionsAsync(SelectedTenantId); // 載入訂閱列表。
-                if (IsSubscriptionSelected)
+                try
                 {
-                    await LoadResourceGroupsAsync(SelectedTenantId, SelectedSubscriptionId); // 載入資源群組列表。
-                    WafPolicies.Clear(); // 清空 WAF 策略列表。
-                    ScanErrorOccurred = false;
+                    await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId, SelectedResourceGroupName); // 掃描所選資源群組。
 
-                    if (IsResourceGroupSelected)
+                    // 將 WAF 策略表格渲染為 HTML 字串
+                    // 需要一個 _WafPoliciesTablePartial.cshtml 局部視圖
+                    var wafPoliciesHtml = await RenderPartialViewToStringAsync("_WafPoliciesPartial", WafPolicies);
+
+                    return new JsonResult(new
                     {
-                        await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId, SelectedResourceGroupName); // 掃描所選資源群組。
-                    }
-                    else // 如果選擇了 "所有資源群組" 或取消選擇
-                    {
-                        await PerformScanAsync(SelectedTenantId, SelectedSubscriptionId); // 掃描整個訂閱。
-                    }
+                        Success = true,
+                        WafPoliciesHtml = wafPoliciesHtml
+                    });
+                } catch (Exception ex)
+                {
+                    ScanErrorOccurred = true;
+                    ErrorMessage = $"載入訂閱時發生錯誤: {ex.Message}";
+                    Console.WriteLine(ErrorMessage);
+                    return new JsonResult(new { Success = false, ErrorMessage = ErrorMessage });
                 }
+            } else
+            {
+                return new JsonResult(new { Success = true, WafPoliciesHtml = "" }); // 如果沒有選擇訂閱，返回空列表
             }
-            return Page(); // 返回當前頁面。
         }
-
         // LoadTenantsAsync 方法：從服務載入所有可用的租用戶。
         private async Task LoadTenantsAsync()
         {
@@ -209,9 +221,6 @@ namespace AzureFirewallManagerTools.Pages
                 Value = s.Id,
                 Text = $"{s.DisplayName} ({s.Id})"
             }).ToList();
-
-            // 在列表頂部添加一個「所有訂閱」的選項
-            AvailableSubscriptions.Insert(0, new SelectListItem { Value = "", Text = "--- 所有訂閱 ---", Selected = true });
 
             // 如果 SelectedSubscriptionId 不在有效列表內，則重置它
             if (!string.IsNullOrEmpty(SelectedSubscriptionId) && !AvailableSubscriptions.Any(s => s.Value == SelectedSubscriptionId))
@@ -267,5 +276,39 @@ namespace AzureFirewallManagerTools.Pages
                 WafPolicies.Clear(); // 掃描失敗時清空結果
             }
         }
+
+        private async Task<string> RenderPartialViewToStringAsync<TModel>(string viewName, TModel model)
+        {
+            var viewData = new ViewDataDictionary(new EmptyModelMetadataProvider(), new ModelStateDictionary())
+            {
+                Model = model
+            };
+
+            using (var writer = new StringWriter())
+            {
+                var viewEngine = HttpContext.RequestServices.GetService(typeof(IRazorViewEngine)) as IRazorViewEngine;
+                var actionContext = new ActionContext(HttpContext, RouteData, PageContext.ActionDescriptor);
+                var viewResult = viewEngine.FindView(actionContext, viewName, false);
+
+                if (viewResult.View == null)
+                {
+                    throw new ArgumentNullException($"{viewName} does not match any available view");
+                }
+
+                var viewContext = new ViewContext(
+                    actionContext,
+                    viewResult.View,
+                    viewData,
+                    TempData,
+                    writer,
+                    new HtmlHelperOptions()
+                );
+
+                await viewResult.View.RenderAsync(viewContext);
+
+                return writer.GetStringBuilder().ToString();
+            }
+        }
+
     }
 }
