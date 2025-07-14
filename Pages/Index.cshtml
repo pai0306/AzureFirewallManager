@@ -16,50 +16,33 @@
         <div class="row mb-3 align-items-end">
             <div class="col-md-4">
                 <label for="SelectedTenantId" class="form-label">選擇租用戶:</label>
-                <select asp-for="SelectedTenantId" asp-items="Model.AvailableTenants"
-                        class="form-select" onchange="document.getElementById('selectTenantButton').click();">
+                <select asp-for="SelectedTenantId" asp-items="Model.AvailableTenants" class="form-select">
                 </select>
-                <button type="submit" id="selectTenantButton" asp-page-handler="SelectTenant" style="display:none;"></button>
             </div>
             <div class="col-md-4">
-                @if (Model.IsTenantSelected)
-                {
-                    <label for="SelectedSubscriptionId" class="form-label">選擇訂閱:</label>
-                    <select asp-for="SelectedSubscriptionId" asp-items="Model.AvailableSubscriptions"
-                            class="form-select" onchange="document.getElementById('selectSubscriptionButton').click();">
-                    </select>
-                    <button type="submit" id="selectSubscriptionButton" asp-page-handler="SelectSubscription" style="display:none;"></button>
-                }
-                else
-                {
-                    <label for="SelectedSubscriptionId" class="form-label text-muted">選擇訂閱:</label>
-                    <select class="form-select" disabled>
-                        <option>--- 請先選擇租用戶 ---</option>
-                    </select>
-                }
+                <label for="SelectedSubscriptionId" class="form-label">選擇訂閱:</label>
+                <select asp-for="SelectedSubscriptionId" class="form-select" disabled>
+                    <option>--- 請先選擇租用戶 ---</option>
+                </select>
             </div>
             <div class="col-md-4">
-                @if (Model.IsSubscriptionSelected)
-                {
-                    <label for="SelectedResourceGroupName" class="form-label">選擇資源群組:</label>
-                    <select asp-for="SelectedResourceGroupName" asp-items="Model.AvailableResourceGroups"
-                            class="form-select" onchange="document.getElementById('selectResourceGroupButton').click();">
-                    </select>
-                    <button type="submit" id="selectResourceGroupButton" asp-page-handler="SelectResourceGroup" style="display:none;"></button>
-                }
-                else
-                {
-                    <label for="SelectedResourceGroupName" class="form-label text-muted">選擇資源群組:</label>
-                    <select class="form-select" disabled>
-                        <option>--- 請先選擇訂閱 ---</option>
-                    </select>
-                }
+                <label for="SelectedResourceGroupName" class="form-label">選擇資源群組:</label>
+                <select asp-for="SelectedResourceGroupName" class="form-select" disabled>
+                    <option>--- 請先選擇訂閱 ---</option>
+                </select>
             </div>
         </div>
     </form>
 </div>
 
 <hr />
+
+<div id="loadingSpinner" style="display:none; text-align:center; margin-top:20px;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p>正在載入 WAF 策略和相關選項...</p>
+</div>
 
 <!-- 錯誤訊息顯示區塊 -->
 @if (Model.ScanErrorOccurred)
@@ -71,306 +54,15 @@
 
 <!-- 掃描結果顯示區塊 -->
 @* 只有當選擇了租用戶和訂閱，並且有 WAF 策略時才顯示結果 *@
-@if (Model.IsTenantSelected && Model.IsSubscriptionSelected && Model.WafPolicies != null && Model.WafPolicies.Any())
-{
-    <h2 class="mt-4">掃描結果 (@Model.WafPolicies.Count 個策略):</h2>
-
-    <!-- 遍歷並顯示每個 WAF 策略的詳細資訊。
-         結果會根據訂閱名稱、資源群組名稱和策略名稱進行排序，以便於查看。 -->
-    @foreach (var policy in Model.WafPolicies.OrderBy(p => p.SubscriptionName).ThenBy(p => p.ResourceGroupName).ThenBy(p => p.Name))
-    {
-        <div class="card mt-3">
-            <div class="card-header bg-info text-white">
-                <h3 class="mb-0">
-                    @policy.Name
-                    <small class="float-end">(@policy.Type)</small>
-                </h3>
-            </div>
-            <div class="card-body">
-                <p><strong>訂閱:</strong> @policy.SubscriptionName (@policy.SubscriptionId)</p>
-                <p><strong>資源群組:</strong> @policy.ResourceGroupName</p>
-                @if (!string.IsNullOrEmpty(policy.AssociatedResource) && policy.AssociatedResource != "N/A (Linked to Front Door instance)")
-                {
-                    <p><strong>關聯資源:</strong> @policy.AssociatedResource</p>
-                }
-
-                <!-- 託管規則集顯示區塊 -->
-                <h4 class="mt-3">託管規則集:</h4>
-                @if (policy.ManagedRules.Any())
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var managedRuleSet in policy.ManagedRules)
-                        {
-                            <li class="list-group-item">
-                                <strong>類型:</strong> @managedRuleSet.RuleSetType, <strong>版本:</strong> @managedRuleSet.RuleSetVersion
-                                @if (managedRuleSet.RuleGroupOverrides.Any())
-                                {
-                                    <ul class="list-group list-group-flush mt-2">
-                                        @foreach (var groupOverride in managedRuleSet.RuleGroupOverrides)
-                                        {
-                                            <li class="list-group-item list-group-item-light">
-                                                <strong>群組:</strong> @groupOverride.RuleGroupName
-                                                @if (groupOverride.DisabledRules.Any())
-                                                {
-                                                    <span class="badge bg-warning text-dark ms-2">已禁用規則: @string.Join(", ", groupOverride.DisabledRules)</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-success ms-2">無禁用規則</span>
-                                                }
-
-                                                @* 顯示規則群組覆寫下的具體規則 *@
-                                                @if (groupOverride.Rules.Any())
-                                                {
-                                                    <h6 class="mt-2 text-info">覆寫規則 (共 @groupOverride.Rules.Count 個):</h6>
-                                                    <ul class="list-group list-group-flush">
-                                                        @foreach (var rule in groupOverride.Rules)
-                                                        {
-                                                            <li class="list-group-item list-group-item-secondary">
-                                                                <strong>ID:</strong> @rule.RuleId, <strong>狀態:</strong> @rule.State
-                                                                @* 顯示 ManagedRuleOverride 內部的排除項 *@
-                                                                @if (rule.Exclusions.Any())
-                                                                {
-                                                                    <h6 class="mt-2 text-danger">規則排除項 (共 @rule.Exclusions.Count 個):</h6>
-                                                                    <ul class="list-group list-group-flush">
-                                                                        @foreach (var ruleExclusion in rule.Exclusions)
-                                                                        {
-                                                                            <li class="list-group-item list-group-item-warning">
-                                                                                <strong>變數:</strong> @ruleExclusion.MatchVariable, <strong>操作符:</strong> @ruleExclusion.SelectorMatchOperator, <strong>選擇器:</strong> @ruleExclusion.Selector
-                                                                                @if (ruleExclusion.ManagedRuleSetExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">針對規則集:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var mrsEx in ruleExclusion.ManagedRuleSetExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                @mrsEx.RuleSetType @mrsEx.RuleSetVersion
-                                                                                                @if (mrsEx.RuleGroupExclusions.Any())
-                                                                                                {
-                                                                                                    <p class="mb-0 mt-1">針對群組:</p>
-                                                                                                    <ul class="list-group list-group-flush">
-                                                                                                        @foreach (var rgEx in mrsEx.RuleGroupExclusions)
-                                                                                                        {
-                                                                                                            <li class="list-group-item list-group-item-secondary">
-                                                                                                                @rgEx.RuleGroupName
-                                                                                                                @if (rgEx.Rules.Any())
-                                                                                                                {
-                                                                                                                    <span> (規則 ID: @string.Join(", ", rgEx.Rules.Select(r => r.RuleId)))</span>
-                                                                                                                }
-                                                                                                            </li>
-                                                                                                        }
-                                                                                                    </ul>
-                                                                                                }
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                                @if (ruleExclusion.RuleGroupExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">直接針對規則群組:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var rgEx in ruleExclusion.RuleGroupExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                @rgEx.RuleGroupName
-                                                                                                @if (rgEx.Rules.Any())
-                                                                                                {
-                                                                                                    <span> (規則 ID: @string.Join(", ", rgEx.Rules.Select(r => r.RuleId)))</span>
-                                                                                                }
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                                @if (ruleExclusion.RuleExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">直接針對特定規則:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var rEx in ruleExclusion.RuleExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                規則 ID: @rEx.RuleId
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                            </li>
-                                                                        }
-                                                                    </ul>
-                                                                }
-                                                            </li>
-                                                        }
-                                                    </ul>
-                                                }
-                                                else
-                                                {
-                                                    <p class="text-muted">此規則無特定排除項。</p>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                                else
-                                {
-                                    <p class="text-muted">此規則群組無具體規則覆寫。</p>
-                                }
-
-                                
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted">此託管規則集無特定規則群組覆寫。</p>
-                }
-
-                <!-- 自訂規則顯示區塊 -->
-                <h4 class="mt-3">自訂規則:</h4>
-                @if (policy.CustomRules.Any())
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var customRule in policy.CustomRules)
-                        {
-                            <li class="list-group-item">
-                                <strong>名稱:</strong> @customRule.Name, <strong>優先順序:</strong> @customRule.Priority, <strong>動作:</strong> @customRule.Action (@customRule.RuleType)
-                                @if (customRule.MatchConditions.Any())
-                                {
-                                    <ul class="list-group list-group-flush mt-2">
-                                        @foreach (var mc in customRule.MatchConditions)
-                                        {
-                                            <li class="list-group-item list-group-item-secondary">
-                                                <strong>匹配變數:</strong> @mc.MatchVariable
-                                                @if (!string.IsNullOrEmpty(mc.Selector))
-                                                {
-                                                    <span> (選擇器: @mc.Selector)</span>
-                                                }
-                                                , <strong>運算子:</strong> @mc.Operator
-                                                @if (mc.MatchValues.Any())
-                                                {
-                                                    <span>, <strong>值:</strong> @string.Join(", ", mc.MatchValues)</span>
-                                                }
-                                                @if (mc.Transforms.Any())
-                                                {
-                                                    <span>, <strong>轉換:</strong> @string.Join(", ", mc.Transforms)</span>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted">無自訂規則。</p>
-                }
-
-                <!-- 頂層排除項顯示區塊 -->
-                @if (policy.Exclusions.Any())
-                {
-                    <h4 class="mt-3">頂層排除項 (共 @policy.Exclusions.Count 個):</h4>
-                    <ul class="list-group list-group-flush">
-                        @foreach (var exclusion in policy.Exclusions)
-                        {
-                            <li class="list-group-item">
-                                <strong>變數:</strong> @exclusion.MatchVariable, <strong>操作符:</strong> @exclusion.SelectorMatchOperator, <strong>選擇器:</strong> @exclusion.Selector
-
-                                @* 顯示針對託管規則集的排除 *@
-                                @if (exclusion.ManagedRuleSetExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">針對託管規則集的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var mrsExclusion in exclusion.ManagedRuleSetExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>規則集:</strong> @mrsExclusion.RuleSetType @mrsExclusion.RuleSetVersion
-                                                @if (mrsExclusion.RuleGroupExclusions.Any())
-                                                {
-                                                    <h6 class="mt-2 text-secondary">針對規則群組的排除:</h6>
-                                                    <ul class="list-group list-group-flush">
-                                                        @foreach (var rgExclusion in mrsExclusion.RuleGroupExclusions)
-                                                        {
-                                                            <li class="list-group-item list-group-item-light">
-                                                                <strong>群組:</strong> @rgExclusion.RuleGroupName
-                                                                @if (rgExclusion.Rules.Any())
-                                                                {
-                                                                    <span> (規則 ID: @string.Join(", ", rgExclusion.Rules.Select(r => r.RuleId)))</span>
-                                                                }
-                                                            </li>
-                                                        }
-                                                    </ul>
-                                                }
-                                                else
-                                                {
-                                                    <p class="text-muted">此規則集排除項無特定規則群組排除。</p>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-
-                                @* 顯示直接針對規則群組的排除 (不嵌套在 ManagedRuleSetExclusions 下) *@
-                                @if (exclusion.RuleGroupExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">直接針對規則群組的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var rgExclusion in exclusion.RuleGroupExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>群組:</strong> @rgExclusion.RuleGroupName
-                                                @if (rgExclusion.Rules.Any())
-                                                {
-                                                    <span> (規則 ID: @string.Join(", ", rgExclusion.Rules.Select(r => r.RuleId)))</span>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-
-                                @* 顯示直接針對特定規則的排除 (不嵌套在 ManagedRuleSetExclusions 或 RuleGroupExclusions 下) *@
-                                @if (exclusion.RuleExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">直接針對特定規則的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var ruleExclusion in exclusion.RuleExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>規則 ID:</strong> @ruleExclusion.RuleId
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted mt-3">無頂層排除項。</p>
-                }
-            </div>
-        </div>
-    }
-}
-@* 只有當選擇了租用戶和訂閱，但沒有找到 WAF 策略時才顯示此訊息 *@
-else if (!Model.ScanErrorOccurred && Model.IsTenantSelected && Model.IsSubscriptionSelected)
-{
-<div class="alert alert-info mt-3" role="alert">
-    在所選租用戶 @(string.IsNullOrEmpty(Model.SelectedSubscriptionId) ? "中 (所有訂閱)" : $"的訂閱 '{Model.SelectedSubscriptionId}'") @(string.IsNullOrEmpty(Model.SelectedResourceGroupName) ? "中" : $"的資源群組 '{Model.SelectedResourceGroupName}' 中") 沒有找到任何 Azure WAF 策略。請確保您的權限設定正確，並且該租用戶/訂閱/資源群組中存在 Front Door WAF 策略。
+<div id="wafPoliciesTableContainer" style="display: none;">
+    @await Html.PartialAsync("_WafPoliciesPartial", Model.WafPolicies)
 </div>
-}
 @* 如果沒有選擇租用戶，則顯示此訊息 *@
-else if (!Model.IsTenantSelected)
-{
-<div class="alert alert-info mt-3" role="alert">
+<div class="alert alert-info mt-3" role="alert" id="IsTenantSelected">
     請從上方下拉選單中選擇一個 Azure AD 租用戶以開始掃描 WAF 策略。
 </div>
-}
+
 @* 如果選擇了租用戶但沒有選擇訂閱，則顯示此訊息 *@
-else if (Model.IsTenantSelected && !Model.IsSubscriptionSelected)
-{
-<div class="alert alert-info mt-3" role="alert">
+<div class="alert alert-info mt-3" role="alert" id="IsSubScriptionSeleted" style="display: none;">
     請從上方下拉選單中選擇一個 Azure 訂閱以開始掃描 WAF 策略。
 </div>
-}
