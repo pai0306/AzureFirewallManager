@@ -1,11 +1,12 @@
+using Azure.Core;
 using AzureFirewallManagerTools.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+builder.Services.AddControllers();
 builder.Services.AddRazorPages();
 
-builder.Services.AddScoped<AzureWafScannerService>();
+builder.Services.AddScoped<AzureWafService>();
 
 var app = builder.Build();
 
@@ -23,7 +24,7 @@ app.UseStaticFiles();
 app.UseRouting();
 
 app.UseAuthorization();
-
+app.MapControllers();
 app.MapRazorPages();
 
 app.Run();

@@ -156,4 +156,152 @@
             }
         });
     });
+
+    var notesModalElement = document.getElementById('notesModal');
+    var notesModal = new bootstrap.Modal(notesModalElement);
+
+    // 用於儲存當前點擊的「編輯備註」按鈕的引用
+    var currentEditButton = null;
+
+    $(document).on('click', '.edit-notes-btn', function () {
+        currentEditButton = $(this); // 儲存按鈕引用
+        var entityType = currentEditButton.data('entity-type');
+        var currentNotes = currentEditButton.data('current-notes') || '';
+
+        // 清空所有隱藏欄位，避免上一次點擊的殘留資料
+        $('#notesPolicyName, #notesCustomRuleName, #notesMatchConditionIndex, #notesMatchValue, ' +
+            '#notesManagedRuleSetType, #notesManagedRuleSetVersion, #notesRuleGroupName, #notesRuleId').val('');
+
+        // 根據實體類型填充不同的隱藏欄位
+        if (entityType === 'WafPolicy') {
+            $('#notesModalLabel').text('編輯策略備註');
+            $('#notesPolicyName').val(currentEditButton.data('entity-id'));
+        } else if (entityType === 'CustomRule') {
+            $('#notesModalLabel').text('編輯自訂規則備註');
+            $('#notesPolicyName').val(currentEditButton.data('policy-name')); // 從 data-policy-name 獲取
+            $('#notesCustomRuleName').val(currentEditButton.data('custom-rule-name')); // 從 data-custom-rule-name 獲取
+        } else if (entityType === 'ManagedRuleOverride') {
+            $('#notesModalLabel').text('編輯託管規則覆寫備註');
+            // *** 直接從 data-* 屬性讀取 ***
+            $('#notesPolicyName').val(currentEditButton.data('policy-name'));
+            $('#notesManagedRuleSetType').val(currentEditButton.data('ruleset-type'));
+            $('#notesManagedRuleSetVersion').val(currentEditButton.data('ruleset-version'));
+            $('#notesRuleGroupName').val(currentEditButton.data('rule-group-name'));
+            $('#notesRuleId').val(currentEditButton.data('rule-id')); // 直接獲取 RuleId
+        } else if (entityType === 'MatchValue') {
+            $('#notesModalLabel').text('編輯匹配值備註');
+            $('#notesPolicyName').val(currentEditButton.data('policy-name'));
+            $('#notesCustomRuleName').val(currentEditButton.data('custom-rule-name'));
+            $('#notesMatchConditionIndex').val(currentEditButton.data('match-condition-index'));
+            $('#notesMatchValue').val(currentEditButton.data('match-value'));
+        }
+
+        // 設定通用欄位
+        $('#notesEntityType').val(entityType);
+        $('#notesTextarea').val(currentNotes);
+
+        notesModal.show();
+    });
+
+    // 監聽模態視窗的儲存按鈕點擊事件
+    $('#saveNotesBtn').on('click', function () {
+        var entityType = $('#notesEntityType').val();
+        var newNotes = $('#notesTextarea').val();
+        var postData = {
+            notesContent: newNotes,
+            entityType: entityType
+        };
+
+        // 根據實體類型組裝不同的鍵值到 postData
+        if (entityType === 'WafPolicy') {
+            postData.wafPolicyName = $('#notesPolicyName').val();
+            // PartitionKey: policy.Name, RowKey: "" (或也用 policy.Name)
+            postData.partitionKey = postData.wafPolicyName;
+            postData.rowKey = postData.wafPolicyName; // 或一個固定字串如 "PolicyNotes"
+        } else if (entityType === 'CustomRule') {
+            postData.wafPolicyName = $('#notesPolicyName').val();
+            postData.customRuleName = $('#notesCustomRuleName').val();
+            // PartitionKey: PolicyName_CustomRuleName, RowKey: CustomRuleName (或一個固定字串如 "RuleNotes")
+            postData.partitionKey = `${postData.wafPolicyName}_${postData.customRuleName}`;
+            postData.rowKey = postData.customRuleName; // 或一個固定字串如 "RuleNotes"
+        } else if (entityType === 'ManagedRuleOverride') {
+            postData.wafPolicyName = $('#notesPolicyName').val();
+            postData.managedRuleSetType = $('#notesManagedRuleSetType').val();
+            postData.managedRuleSetVersion = $('#notesManagedRuleSetVersion').val();
+            postData.ruleGroupName = $('#notesRuleGroupName').val();
+            postData.ruleId = $('#notesRuleId').val(); // 確保這裡取得了正確的 RuleId
+
+            // Construct PartitionKey and RowKey carefully
+            postData.partitionKey = `${postData.wafPolicyName}_${postData.managedRuleSetType}_${postData.managedRuleSetVersion}_${postData.ruleGroupName}`;
+            // *** 關鍵：對 RowKey 進行 URL 編碼 ***
+            postData.rowKey = encodeURIComponent(postData.ruleId);
+        } else if (entityType === 'MatchValue') {
+            postData.wafPolicyName = $('#notesPolicyName').val();
+            postData.customRuleName = $('#notesCustomRuleName').val();
+            postData.matchConditionIndex = $('#notesMatchConditionIndex').val();
+            postData.matchValue = $('#notesMatchValue').val();
+
+            // 對 matchValue 進行 URL 編碼以用於 RowKey
+            var encodedMatchValue = encodeURIComponent(postData.matchValue);
+
+            // PartitionKey: PolicyName_CustomRuleName
+            // RowKey: MatchConditionIndex_EncodedMatchValue
+            postData.partitionKey = `${postData.wafPolicyName}_${postData.customRuleName}`;
+            postData.rowKey = `MC_${postData.matchConditionIndex}_${encodedMatchValue}`;
+        }
+
+        // 從 currentEditButton 獲取目標元素的 ID
+        var targetNotesId = currentEditButton.data('target-notes-id');
+        var targetContainerId = currentEditButton.data('target-container-id');
+        var targetBadgeId = currentEditButton.data('target-badge-id'); // 新增的備註徽章ID
+
+        // 發送 AJAX 請求到後端來保存備註
+        $.ajax({
+            url: '/api/wafnotes/save',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(postData),
+            success: function (response) {
+                alert('備註已保存！');
+                /// *** UI 更新邏輯 ***
+                if (targetNotesId) {
+                    var $notesContentSpan = $('#' + targetNotesId);
+                    var $notesContainerDiv = targetContainerId ? $('#' + targetContainerId) : null;
+                    var $notesBadgeSpan = targetBadgeId ? $('#' + targetBadgeId) : null;
+
+                    if (newNotes && newNotes.trim() !== '') {
+                        $notesContentSpan.text(newNotes);
+                        if ($notesContainerDiv) {
+                            $notesContainerDiv.show();
+                        }
+                        if ($notesBadgeSpan) { 
+                            $notesBadgeSpan.show();
+                        }
+                    } else {
+                        $notesContentSpan.text('');
+                        if ($notesContainerDiv) {
+                            $notesContainerDiv.hide();
+                        }
+                        if ($notesBadgeSpan) { 
+                            $notesBadgeSpan.hide();
+                        }
+                    }
+                }
+
+                // 更新按鈕的 data-current-notes 屬性，以便下次編輯時顯示最新內容
+                currentEditButton.data('current-notes', newNotes);
+
+                notesModal.hide();
+            },
+            error: function (xhr, status, error) {
+                alert('保存備註失敗: ' + (xhr.responseJSON ? xhr.responseJSON.message : error));
+            }
+        });
+    });
+
+    // 模態視窗關閉時清除文字區域內容
+    notesModalElement.addEventListener('hidden.bs.modal', function (event) {
+        $('#notesTextarea').val('');
+        currentEditButton = null; // 清除按鈕引用
+    });
 });

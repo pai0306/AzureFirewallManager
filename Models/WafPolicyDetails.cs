@@ -8,6 +8,7 @@ namespace AzureFirewallManagerTools.Models
     {
         public string Name { get; set; } // WAF 策略的名稱。
         public string Type { get; set; } // WAF 策略的類型 (例如："Application Gateway WAF Policy", "Front Door WAF Policy")。
+        public string Notes { get; set; } // 新增：用於單個託管規則覆寫的備註
         public string AssociatedResource { get; set; } // WAF 策略關聯的資源名稱 (例如：關聯的 Application Gateway 名稱)。
                                                        // 對於 Front Door WAF 策略，可能為 "N/A (Linked to Front Door instance)"，因為它們是全域的。
         public string SubscriptionName { get; set; } // WAF 策略所屬訂閱的顯示名稱。
@@ -29,6 +30,7 @@ namespace AzureFirewallManagerTools.Models
         public string RuleSetVersion { get; set; } // 規則集版本 (例如："3.1")。
         // 規則群組覆寫列表，用於指定託管規則集中哪些規則被禁用。
         public List<RuleGroupOverrideDetails> RuleGroupOverrides { get; set; } = new List<RuleGroupOverrideDetails>();
+        public List<ExclusionDetails> Exclusions { get; set; } = new List<ExclusionDetails> ();
     }
 
     // RuleGroupOverrideDetails 類別：表示託管規則集中一個規則群組的覆寫。
@@ -46,6 +48,7 @@ namespace AzureFirewallManagerTools.Models
     {
         public string RuleId { get; set; }
         public string State { get; set; } // 例如："Enabled", "Disabled"
+        public string Notes { get; set; } // 新增：用於單個託管規則覆寫的備註
         // 注意：ManagedRuleOverride 在 SDK 中沒有直接的 Action 屬性。
         // Action 通常在規則集或策略層級定義。
         public int ExclustionCount { get; set; }
@@ -60,6 +63,7 @@ namespace AzureFirewallManagerTools.Models
         public int Priority { get; set; } // 規則的優先順序。
         public string Action { get; set; } // 規則匹配時採取的動作 (例如："Allow", "Block", "Log", "Redirect")。
         public string RuleType { get; set; } // 規則類型 (例如："MatchRule", "RateLimitRule")。
+        public string Notes { get; set; } // 新增：用於單個託管規則覆寫的備註
         // 匹配條件列表。
         public List<MatchConditionDetails> MatchConditions { get; set; } = new List<MatchConditionDetails>();
     }
@@ -69,7 +73,7 @@ namespace AzureFirewallManagerTools.Models
     {
         public string MatchVariable { get; set; } // 匹配變數 (例如："RemoteAddr", "RequestHeaders")。
         public string Operator { get; set; } // 匹配運算子 (例如："IPMatch", "Contains")。
-        public List<string> MatchValues { get; set; } = new List<string>(); // 匹配值列表。
+        public List<MatchValueWithNotes> MatchValues { get; set; } = new List<MatchValueWithNotes>();
         public string Selector { get; set; } // 選擇器 (例如：對於 RequestHeaders，可以是 "User-Agent")。
         public List<string> Transforms { get; set; } = new List<string>(); // 轉換列表 (例如："Lowercase", "Trim")。
     }
@@ -110,4 +114,14 @@ namespace AzureFirewallManagerTools.Models
     {
         public string RuleId { get; set; }
     }
+
+    /// <summary>
+    /// 表示一個匹配條件中的值及其相關備註。
+    /// </summary>
+    public class MatchValueWithNotes
+    {
+        public string Value { get; set; } // 實際的匹配值 (例如：IP 地址)
+        public string Notes { get; set; } // 針對這個值的備註 (例如：IP 來源、說明)
+    }
+
 }

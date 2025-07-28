@@ -8,278 +8,302 @@
          結果會根據訂閱名稱、資源群組名稱和策略名稱進行排序，以便於查看。 -->
     @foreach (var policy in Model.OrderBy(p => p.SubscriptionName).ThenBy(p => p.ResourceGroupName).ThenBy(p => p.Name))
     {
-        <div class="card mt-3">
-            <div class="card-header bg-info text-white">
-                <h3 class="mb-0">
-                    @policy.Name
-                    <small class="float-end">(@policy.Type)</small>
-                </h3>
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 me-auto">@policy.Name</h5>
+
+                    <button class="btn btn-sm btn-outline-light ms-3 edit-notes-btn"
+                            data-entity-type="WafPolicy"
+                            data-entity-id="@policy.Name"
+                            data-current-notes="@policy.Notes"
+                            data-target-notes-id="policy-notes-content-@policy.Name.Replace(" ", "-")"
+                            data-target-container-id="policy-notes-@policy.Name.Replace(" ", "-")">
+                        編輯策略備註
+                    </button>
+                </div>
+
+                <div id="policy-notes-@policy.Name.Replace(" ", "-")" class="alert alert-info mt-2 mb-0" role="alert" style="@(string.IsNullOrEmpty(policy.Notes) ? "display:none;" : "")">
+                    <strong>策略備註:</strong> <span id="policy-notes-content-@policy.Name.Replace(" ", "-")">@policy.Notes</span>
+                </div>
             </div>
             <div class="card-body">
                 <p><strong>訂閱:</strong> @policy.SubscriptionName (@policy.SubscriptionId)</p>
                 <p><strong>資源群組:</strong> @policy.ResourceGroupName</p>
-                @if (!string.IsNullOrEmpty(policy.AssociatedResource) && policy.AssociatedResource != "N/A (Linked to Front Door instance)")
-                {
-                    <p><strong>關聯資源:</strong> @policy.AssociatedResource</p>
-                }
 
-                <!-- 託管規則集顯示區塊 -->
-                <h4 class="mt-3">託管規則集:</h4>
-                @if (policy.ManagedRules.Any())
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var managedRuleSet in policy.ManagedRules)
-                        {
-                            <li class="list-group-item">
-                                <strong>類型:</strong> @managedRuleSet.RuleSetType, <strong>版本:</strong> @managedRuleSet.RuleSetVersion
-                                @if (managedRuleSet.RuleGroupOverrides.Any())
-                                {
-                                    <ul class="list-group list-group-flush mt-2">
-                                        @foreach (var groupOverride in managedRuleSet.RuleGroupOverrides)
-                                        {
-                                            <li class="list-group-item list-group-item-light">
-                                                <strong>群組:</strong> @groupOverride.RuleGroupName
-                                                @if (groupOverride.DisabledRules.Any())
-                                                {
-                                                    <span class="badge bg-warning text-dark ms-2">已禁用規則: @string.Join(", ", groupOverride.DisabledRules)</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-success ms-2">無禁用規則</span>
-                                                }
+                <hr />
 
-                                                @* 顯示規則群組覆寫下的具體規則 *@
-                                                @if (groupOverride.Rules.Any())
+                <button class="btn btn-info btn-sm mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#managedRules_@policy.Name.Replace(" ", "")" aria-expanded="false" aria-controls="managedRules_@policy.Name.Replace(" ", "")">
+                    託管規則 (@policy.ManagedRules.Count)
+                </button>
+                <div class="collapse mt-3" id="managedRules_@policy.Name.Replace(" ", "")">
+                    <h6>託管規則集:</h6>
+                    @if (policy.ManagedRules.Any())
+                    {
+                        <div class="accordion" id="accordionManagedRules_@policy.Name.Replace(" ", "")">
+                            @foreach (var ruleSet in policy.ManagedRules)
+                            {
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingManagedRuleSet_@ruleSet.RuleSetType.Replace(" ", "")_@ruleSet.RuleSetVersion.Replace(".", "")">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManagedRuleSet_@ruleSet.RuleSetType.Replace(" ", "")_@ruleSet.RuleSetVersion.Replace(".", "")" aria-expanded="false" aria-controls="collapseManagedRuleSet_@ruleSet.RuleSetType.Replace(" ", "")_@ruleSet.RuleSetVersion.Replace(".", "")">
+                                            @ruleSet.RuleSetType  @ruleSet.RuleSetVersion
+                                        </button>
+                                    </h2>
+                                    <div id="collapseManagedRuleSet_@ruleSet.RuleSetType.Replace(" ", "")_@ruleSet.RuleSetVersion.Replace(".", "")" class="accordion-collapse collapse" aria-labelledby="headingManagedRuleSet_@ruleSet.RuleSetType.Replace(" ", "")_@ruleSet.RuleSetVersion.Replace(".", "")" data-bs-parent="#accordionManagedRules_@policy.Name.Replace(" ", "")">
+                                        <div class="accordion-body">
+                                            @if (ruleSet.RuleGroupOverrides.Any())
+                                            {
+                                                <p>規則群組覆寫:</p>
+                                                <ul class="list-group list-group-flush">
+                                                    @foreach (var groupOverride in ruleSet.RuleGroupOverrides)
+                                                    {
+                                                        <li class="list-group-item bg-light">
+                                                            <strong>@groupOverride.RuleGroupName</strong>
+                                                            @if (groupOverride.DisabledRules.Any())
+                                                            {
+                                                                <span class="badge bg-warning text-dark ms-2">已禁用 @groupOverride.DisabledRules.Count 個規則</span>
+                                                            }
+                                                            @if (groupOverride.Rules.Any())
+                                                            {
+                                                                <p class="mb-1 mt-2">詳細規則覆寫:</p>
+                                                                <ul class="list-unstyled">
+                                                                    @foreach (var ruleOverride in groupOverride.Rules)
+                                                                    {
+                                                                        <li class="mb-2">
+                                                                            @* 為每個規則覆寫列表項添加一些下邊距 *@
+                                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                                <span class="fw-bold me-auto">- 規則 ID: @ruleOverride.RuleId</span> @* 將規則ID靠左，並加粗 *@
+                                                                                狀態: <span class="badge @(ruleOverride.State == "Disabled" ? "bg-danger" : "bg-success") ms-1">@ruleOverride.State</span>
+
+                                                                                @if (ruleOverride.ExclustionCount > 0)
+                                                                                {
+                                                                                    <span class="badge bg-info ms-2">排除項: @ruleOverride.ExclustionCount</span>
+                                                                                    <button class="btn btn-link btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#exclusionModal_@policy.Name.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")">
+                                                                                        查看排除項
+                                                                                    </button>
+                                                                                }
+
+                                                                                @* 備註狀態圖示 (Badge) - 永遠渲染，通過 style="display:none;" 控制可見性 *@
+                                                                                <span class="badge bg-info ms-2"
+                                                                                      id="managed-rule-notes-badge-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")"
+                                                                                      style="@(string.IsNullOrEmpty(ruleOverride.Notes) ? "display:none;" : "")">備註</span>
+
+                                                                                <button class="btn btn-link btn-sm edit-notes-btn"
+                                                                                        data-entity-type="ManagedRuleOverride"
+                                                                                        data-policy-name="@policy.Name"
+                                                                                        data-ruleset-type="@ruleSet.RuleSetType"
+                                                                                        data-ruleset-version="@ruleSet.RuleSetVersion"
+                                                                                        data-rule-group-name="@groupOverride.RuleGroupName"
+                                                                                        data-rule-id="@ruleOverride.RuleId"
+                                                                                        data-current-notes="@ruleOverride.Notes"
+                                                                                        data-target-notes-id="managed-rule-notes-content-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")"
+                                                                                        data-target-container-id="managed-rule-notes-container-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")"
+                                                                                        data-target-badge-id="managed-rule-notes-badge-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")">
+                                                                                    編輯
+                                                                                </button>
+                                                                            </div>
+
+                                                                            @* 備註內容區塊 - 永遠渲染，通過 style="display:none;" 控制可見性 *@
+                                                                            <div id="managed-rule-notes-container-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")"
+                                                                                 class="alert alert-secondary py-1 px-2 mt-1 mb-0 ms-4" role="alert"
+                                                                                 style="@(string.IsNullOrEmpty(ruleOverride.Notes) ? "display:none;" : "")">
+                                                                                <small class="text-dark">備註: <span id="managed-rule-notes-content-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@groupOverride.RuleGroupName.Replace(" ", "-")_@ruleOverride.RuleId.Replace(" ", "-")">@ruleOverride.Notes</span></small>
+                                                                            </div>
+                                                                        </li>
+                                                                    }
+                                                                </ul>
+                                                            }
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <p>無規則群組覆寫。</p>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p>無託管規則。</p>
+                    }
+                </div>
+
+                <hr />
+
+                <button class="btn btn-info btn-sm mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#customRules_@policy.Name.Replace(" ", "")" aria-expanded="false" aria-controls="customRules_@policy.Name.Replace(" ", "")">
+                    自訂規則 (@policy.CustomRules.Count)
+                </button>
+                <div class="collapse mt-3" id="customRules_@policy.Name.Replace(" ", "")">
+                    <h6>自訂規則:</h6>
+                    @if (policy.CustomRules.Any())
+                    {
+                        <div class="accordion" id="accordionCustomRules_@policy.Name.Replace(" ", "")">
+                            @foreach (var customRule in policy.CustomRules)
+                            {
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="heading_@customRule.Name.Replace(" ", "")">
+                                        <button class="accordion-button collapsed" type="button"
+                                                data-bs-toggle="collapse"
+                                                data-bs-target="#collapse_@customRule.Name.Replace(" ", "-")"
+                                                aria-expanded="false"
+                                                aria-controls="collapse_@customRule.Name.Replace(" ", "-")">
+
+                                            <span class="me-auto">
+                                                @* 使用 me-auto 將名稱推到最左邊 *@
+                                                @customRule.Name
+                                                <span class="badge @(customRule.Action == "Block" ? "bg-danger" : "bg-success") ms-2">@customRule.Action</span>
+                                                <small class="text-muted ms-3">優先順序: @customRule.Priority</small>
+                                            </span>
+
+                                            @* **這裡只放備註指示器 (例如一個小徽章或圖示)** *@
+                                            @if (!string.IsNullOrEmpty(customRule.Notes))
+                                            {
+                                                <span class="badge bg-info ms-2" id="custom-rule-header-badge-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")">備註</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-info ms-2" id="custom-rule-header-badge-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")" style="display:none;">備註</span>
+                                            }
+
+                                            @* 將編輯按鈕放在這裡可能仍會影響排版，考慮是否移到 accordion-body 內 *@
+                                            @* 如果放在這裡，可以考慮使用一個很小的圖示按鈕 *@
+                                            @* <button class="btn btn-sm btn-outline-secondary ms-2 edit-notes-btn" ... >編輯</button> *@
+                                        </button>
+                                    </h2>
+                                    <div id="collapse_@customRule.Name.Replace(" ", "")" class="accordion-collapse collapse" aria-labelledby="heading_@customRule.Name.Replace(" ", "")" data-bs-parent="#accordionCustomRules_@policy.Name.Replace(" ", "")">
+                                        <div class="accordion-body">
+                                            <p>類型: @customRule.RuleType</p>
+
+                                            @* **將備註內容區塊移到 accordion-body 內部** *@
+                                            <div id="custom-rule-notes-container-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")"
+                                                 class="alert alert-info py-1 px-2 mt-2 mb-3" role="alert"
+                                                 style="@(string.IsNullOrEmpty(customRule.Notes) ? "display:none;" : "")">
+                                                <strong>備註:</strong> <span id="custom-rule-notes-content-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")">@customRule.Notes</span>
+                                                <button class="btn btn-link btn-sm float-end edit-notes-btn"
+                                                        data-entity-type="CustomRule"
+                                                        data-entity-id="@(policy.Name)_@(customRule.Name)"
+                                                        data-current-notes="@customRule.Notes"
+                                                        data-target-notes-id="custom-rule-notes-content-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")"
+                                                        data-target-container-id="custom-rule-notes-container-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")"
+                                                        data-target-badge-id="custom-rule-header-badge-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")">
+                                                    編輯
+                                                </button>
+                                            </div>
+                                            <p class="mt-3">匹配條件:</p>
+                                            <ul class="list-unstyled">
+                                                @foreach (var mc in customRule.MatchConditions)
                                                 {
-                                                    <h6 class="mt-2 text-info">覆寫規則 (共 @groupOverride.Rules.Count 個):</h6>
-                                                    <ul class="list-group list-group-flush">
-                                                        @foreach (var rule in groupOverride.Rules)
+                                                    <li>
+                                                        <p>變數: @mc.MatchVariable, 操作符: @mc.Operator</p>
+                                                        @if (!string.IsNullOrEmpty(mc.Selector))
                                                         {
-                                                            <li class="list-group-item list-group-item-secondary">
-                                                                <strong>ID:</strong> @rule.RuleId, <strong>狀態:</strong> @rule.State
-                                                                @* 顯示 ManagedRuleOverride 內部的排除項 *@
-                                                                @if (rule.Exclusions.Any())
-                                                                {
-                                                                    <h6 class="mt-2 text-danger">規則排除項 (共 @rule.Exclusions.Count 個):</h6>
-                                                                    <ul class="list-group list-group-flush">
-                                                                        @foreach (var ruleExclusion in rule.Exclusions)
-                                                                        {
-                                                                            <li class="list-group-item list-group-item-warning">
-                                                                                <strong>變數:</strong> @ruleExclusion.MatchVariable, <strong>操作符:</strong> @ruleExclusion.SelectorMatchOperator, <strong>選擇器:</strong> @ruleExclusion.Selector
-                                                                                @if (ruleExclusion.ManagedRuleSetExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">針對規則集:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var mrsEx in ruleExclusion.ManagedRuleSetExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                @mrsEx.RuleSetType @mrsEx.RuleSetVersion
-                                                                                                @if (mrsEx.RuleGroupExclusions.Any())
-                                                                                                {
-                                                                                                    <p class="mb-0 mt-1">針對群組:</p>
-                                                                                                    <ul class="list-group list-group-flush">
-                                                                                                        @foreach (var rgEx in mrsEx.RuleGroupExclusions)
-                                                                                                        {
-                                                                                                            <li class="list-group-item list-group-item-secondary">
-                                                                                                                @rgEx.RuleGroupName
-                                                                                                                @if (rgEx.Rules.Any())
-                                                                                                                {
-                                                                                                                    <span> (規則 ID: @string.Join(", ", rgEx.Rules.Select(r => r.RuleId)))</span>
-                                                                                                                }
-                                                                                                            </li>
-                                                                                                        }
-                                                                                                    </ul>
-                                                                                                }
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                                @if (ruleExclusion.RuleGroupExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">直接針對規則群組:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var rgEx in ruleExclusion.RuleGroupExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                @rgEx.RuleGroupName
-                                                                                                @if (rgEx.Rules.Any())
-                                                                                                {
-                                                                                                    <span> (規則 ID: @string.Join(", ", rgEx.Rules.Select(r => r.RuleId)))</span>
-                                                                                                }
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                                @if (ruleExclusion.RuleExclusions.Any())
-                                                                                {
-                                                                                    <p class="mb-0 mt-1">直接針對特定規則:</p>
-                                                                                    <ul class="list-group list-group-flush">
-                                                                                        @foreach (var rEx in ruleExclusion.RuleExclusions)
-                                                                                        {
-                                                                                            <li class="list-group-item list-group-item-light">
-                                                                                                規則 ID: @rEx.RuleId
-                                                                                            </li>
-                                                                                        }
-                                                                                    </ul>
-                                                                                }
-                                                                            </li>
-                                                                        }
-                                                                    </ul>
-                                                                }
-                                                            </li>
+                                                            <p>選擇器: @mc.Selector</p>
                                                         }
-                                                    </ul>
-                                                }
-                                                else
-                                                {
-                                                    <p class="text-muted">此規則無特定排除項。</p>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                                else
-                                {
-                                    <p class="text-muted">此規則群組無具體規則覆寫。</p>
-                                }
-
-
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted">此託管規則集無特定規則群組覆寫。</p>
-                }
-
-                <!-- 自訂規則顯示區塊 -->
-                <h4 class="mt-3">自訂規則:</h4>
-                @if (policy.CustomRules.Any())
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var customRule in policy.CustomRules)
-                        {
-                            <li class="list-group-item">
-                                <strong>名稱:</strong> @customRule.Name, <strong>優先順序:</strong> @customRule.Priority, <strong>動作:</strong> @customRule.Action (@customRule.RuleType)
-                                @if (customRule.MatchConditions.Any())
-                                {
-                                    <ul class="list-group list-group-flush mt-2">
-                                        @foreach (var mc in customRule.MatchConditions)
-                                        {
-                                            <li class="list-group-item list-group-item-secondary">
-                                                <strong>匹配變數:</strong> @mc.MatchVariable
-                                                @if (!string.IsNullOrEmpty(mc.Selector))
-                                                {
-                                                    <span> (選擇器: @mc.Selector)</span>
-                                                }
-                                                , <strong>運算子:</strong> @mc.Operator
-                                                @if (mc.MatchValues.Any())
-                                                {
-                                                    <span>, <strong>值:</strong> @string.Join(", ", mc.MatchValues)</span>
-                                                }
-                                                @if (mc.Transforms.Any())
-                                                {
-                                                    <span>, <strong>轉換:</strong> @string.Join(", ", mc.Transforms)</span>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted">無自訂規則。</p>
-                }
-
-                <!-- 頂層排除項顯示區塊 -->
-                @if (policy.Exclusions.Any())
-                {
-                    <h4 class="mt-3">頂層排除項 (共 @policy.Exclusions.Count 個):</h4>
-                    <ul class="list-group list-group-flush">
-                        @foreach (var exclusion in policy.Exclusions)
-                        {
-                            <li class="list-group-item">
-                                <strong>變數:</strong> @exclusion.MatchVariable, <strong>操作符:</strong> @exclusion.SelectorMatchOperator, <strong>選擇器:</strong> @exclusion.Selector
-
-                                @* 顯示針對託管規則集的排除 *@
-                                @if (exclusion.ManagedRuleSetExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">針對託管規則集的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var mrsExclusion in exclusion.ManagedRuleSetExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>規則集:</strong> @mrsExclusion.RuleSetType @mrsExclusion.RuleSetVersion
-                                                @if (mrsExclusion.RuleGroupExclusions.Any())
-                                                {
-                                                    <h6 class="mt-2 text-secondary">針對規則群組的排除:</h6>
-                                                    <ul class="list-group list-group-flush">
-                                                        @foreach (var rgExclusion in mrsExclusion.RuleGroupExclusions)
+                                                        @if (mc.Transforms.Any())
                                                         {
-                                                            <li class="list-group-item list-group-item-light">
-                                                                <strong>群組:</strong> @rgExclusion.RuleGroupName
-                                                                @if (rgExclusion.Rules.Any())
-                                                                {
-                                                                    <span> (規則 ID: @string.Join(", ", rgExclusion.Rules.Select(r => r.RuleId)))</span>
-                                                                }
-                                                            </li>
+                                                            <p>轉換: @string.Join(", ", mc.Transforms)</p>
                                                         }
-                                                    </ul>
-                                                }
-                                                else
-                                                {
-                                                    <p class="text-muted">此規則集排除項無特定規則群組排除。</p>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
 
-                                @* 顯示直接針對規則群組的排除 (不嵌套在 ManagedRuleSetExclusions 下) *@
-                                @if (exclusion.RuleGroupExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">直接針對規則群組的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var rgExclusion in exclusion.RuleGroupExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>群組:</strong> @rgExclusion.RuleGroupName
-                                                @if (rgExclusion.Rules.Any())
-                                                {
-                                                    <span> (規則 ID: @string.Join(", ", rgExclusion.Rules.Select(r => r.RuleId)))</span>
-                                                }
-                                            </li>
-                                        }
-                                    </ul>
-                                }
+                                                        <p class="mt-2 mb-1">匹配值 (含備註):</p>
+                                                        <ul class="list-unstyled ms-3">
+                                                            @foreach (var mv in mc.MatchValues) // 現在是 MatchValueWithNotes 類型
+                                                            {
+                                                                <li class="mb-2">
+                                                                    @* 為每個列表項添加一些下邊距，讓它們之間有空間 *@
+                                                                    <div class="d-flex justify-content-between align-items-center">
+                                                                        <span class="fw-bold me-auto">@mv.Value</span> @* 讓值靠左，並加粗以便區分 *@
 
-                                @* 顯示直接針對特定規則的排除 (不嵌套在 ManagedRuleSetExclusions 或 RuleGroupExclusions 下) *@
-                                @if (exclusion.RuleExclusions.Any())
-                                {
-                                    <h6 class="mt-2 text-primary">直接針對特定規則的排除:</h6>
-                                    <ul class="list-group list-group-flush">
-                                        @foreach (var ruleExclusion in exclusion.RuleExclusions)
-                                        {
-                                            <li class="list-group-item list-group-item-info">
-                                                <strong>規則 ID:</strong> @ruleExclusion.RuleId
-                                            </li>
-                                        }
-                                    </ul>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-                else
-                {
-                    <p class="text-muted mt-3">無頂層排除項。</p>
-                }
+                                                                        @* 備註狀態圖示 (Badge) - 永遠渲染，通過 style="display:none;" 控制可見性 *@
+                                                                        <span class="badge bg-info ms-2 me-2"
+                                                                              id="match-value-badge-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")"
+                                                                              style="@(string.IsNullOrEmpty(mv.Notes) ? "display:none;" : "")">備註</span>
+
+                                                                        <button class="btn btn-link btn-sm edit-notes-btn"
+                                                                                data-entity-type="MatchValue"
+                                                                                data-policy-name="@policy.Name"
+                                                                                data-custom-rule-name="@customRule.Name"
+                                                                                data-match-condition-index="@customRule.MatchConditions.IndexOf(mc)"
+                                                                                data-match-value="@mv.Value"
+                                                                                data-current-notes="@mv.Notes" @* 這裡的 @mv.Notes 僅用於按鈕初始化，不是實際顯示的內容 *@
+                                                                                data-target-notes-id="match-value-notes-content-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")"
+                                                                                data-target-container-id="match-value-notes-container-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")"
+                                                                                data-target-badge-id="match-value-badge-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")">
+                                                                            編輯
+                                                                        </button>
+                                                                    </div>
+
+                                                                    @* 備註內容區塊 - 永遠渲染，通過 style="display:none;" 控制可見性 *@
+                                                                    <div id="match-value-notes-container-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")"
+                                                                         class="alert alert-secondary py-1 px-2 mt-1 mb-0 ms-4" role="alert"
+                                                                         style="@(string.IsNullOrEmpty(mv.Notes) ? "display:none;" : "")">
+                                                                        <small class="text-dark">備註: <span id="match-value-notes-content-@policy.Name.Replace(" ", "-")_@customRule.Name.Replace(" ", "-")_@(customRule.MatchConditions.IndexOf(mc))_@mv.Value.Replace(".", "-").Replace(":", "-")">@mv.Notes</span></small>
+                                                                    </div>
+                                                                </li>
+                                                            }
+                                                        </ul>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p>無自訂規則。</p>
+                    }
+                </div>
             </div>
         </div>
+
+        @foreach (var ruleSet in policy.ManagedRules)
+        {
+            @foreach (var groupOverride in ruleSet.RuleGroupOverrides)
+            {
+                @foreach (var ruleOverride in groupOverride.Rules)
+                {
+                    @if (ruleOverride.Exclusions.Any())
+                    {
+                        <div class="modal fade" id="exclusionModal_@policy.Name.Replace(" ", "")_@ruleOverride.RuleId" tabindex="-1" aria-labelledby="exclusionModalLabel" aria-hidden="true">
+                            <div class="modal-dialog modal-dialog-scrollable">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="exclusionModalLabel">規則 @ruleOverride.RuleId 的排除項</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        @if (ruleOverride.Exclusions.Any())
+                                        {
+                                            @foreach (var exclusion in ruleOverride.Exclusions)
+                                            {
+                                                <p><strong>變數:</strong> @exclusion.MatchVariable</p>
+                                                <p><strong>操作符:</strong> @exclusion.SelectorMatchOperator</p>
+                                                <p><strong>選擇器:</strong> @exclusion.Selector</p>
+                                                <hr />
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <p>無排除項。</p>
+                                        }
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        }
     }
 } else
 {

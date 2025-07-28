@@ -15,7 +15,7 @@ namespace AzureFirewallManagerTools.Pages
     public class IndexModel : PageModel
     {
         private readonly ILogger<IndexModel> _logger; // 日誌記錄器。
-        private readonly AzureWafScannerService _wafScannerService; // WAF 掃描服務的實例。
+        private readonly AzureWafService _wafScannerService; // WAF 掃描服務的實例。
 
         // 綁定屬性，用於在頁面顯示 WAF 策略列表。
         [BindProperty]
@@ -56,7 +56,7 @@ namespace AzureFirewallManagerTools.Pages
         public bool IsResourceGroupSelected => !string.IsNullOrEmpty(SelectedResourceGroupName);
 
         // 建構函式：透過依賴注入接收日誌記錄器和 WAF 掃描服務。
-        public IndexModel(ILogger<IndexModel> logger, AzureWafScannerService wafScannerService)
+        public IndexModel(ILogger<IndexModel> logger, AzureWafService wafScannerService)
         {
             _logger = logger;
             _wafScannerService = wafScannerService;
