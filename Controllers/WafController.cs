@@ -52,6 +52,10 @@ namespace AzureFirewallManagerTools.Controllers
                         // 將 MatchConditionIndex 和編碼後的 MatchValue 作為 RowKey
                         rowKey = $"MC_{request.MatchConditionIndex}_{HttpUtility.UrlEncode(request.MatchValue)}";
                         break;
+                    case "ManagedRuleSetExclusion": 
+                        partitionKey = $"{request.WafPolicyName}_{request.ManagedRuleSetType}_{request.ManagedRuleSetVersion}";
+                        rowKey = $"EXC_RULESET_{ Uri.EscapeDataString(request.MatchVariable ?? "")}_{ Uri.EscapeDataString(request.SelectorMatchOperator ?? "")}_{ Uri.EscapeDataString(request.Selector ?? "")}";
+                        break;
                     default:
                         return BadRequest("無效的實體類型。");
                 }
@@ -119,11 +123,15 @@ namespace AzureFirewallManagerTools.Controllers
         public string RuleGroupName { get; set; } = string.Empty;
         [JsonPropertyName("ruleId")]
         public string RuleId { get; set; } = string.Empty;
-
-        // 您可能還需要傳遞訂閱和資源組 ID 來完善備註的上下文
         [JsonPropertyName("subscriptionId")]
         public string SubscriptionId { get; set; } = string.Empty;
         [JsonPropertyName("resourceGroupName")]
         public string ResourceGroupName { get; set; } = string.Empty;
+        [JsonPropertyName("matchVariable")]
+        public string MatchVariable { get; set; } = string.Empty;
+        [JsonPropertyName("selectorMatchOperator")]
+        public string SelectorMatchOperator { get; set; } = string.Empty;
+        [JsonPropertyName("selector")]
+        public string Selector { get; set; } = string.Empty;
     }
 }

@@ -336,50 +336,103 @@ namespace AzureFirewallManagerTools.Services
                         RuleGroupOverrides = new List<RuleGroupOverrideDetails>()
                     };
 
-                    foreach (var groupOverride in ruleSet.RuleGroupOverrides)
+                    // PartitionKey for ManagedRuleSet's direct exclusions
+                    string ruleSetExclusionPk = $"{policy.Name}_{ruleSet.RuleSetType}_{ruleSet.RuleSetVersion}";
+                    var allNotesInRuleSetPartition = await GetAllNotesInPartitionAsync(ruleSetExclusionPk);
+                    var ruleSetNotesMap = allNotesInRuleSetPartition.ToDictionary(n => n.RowKey, n => n.NotesContent); // 建立字典以快速查找
+
+                    if (ruleSet.Exclusions != null) // 先處理Exclusion
                     {
-                        var groupDetails = new RuleGroupOverrideDetails
+                        foreach (var sdkExclusion in ruleSet.Exclusions) // sdkExclusion 是 ManagedRuleExclusion
                         {
-                            RuleGroupName = groupOverride.RuleGroupName,
-                            // 獲取被禁用的規則 ID。
-                            DisabledRules = groupOverride.Rules?.Where(r => r.EnabledState.Equals(Azure.ResourceManager.FrontDoor.Models.ManagedRuleEnabledState.Disabled)).Select(r => r.RuleId).ToList() ?? new List<string>(),
-                        };
-
-                        if (groupOverride.Rules != null)
-                        {
-                            // PartitionKey: PolicyName_RuleSetType_RuleSetVersion_RuleGroupName
-                            string managedRulePk = $"{policy.Name}_{ruleSet.RuleSetType}_{ruleSet.RuleSetVersion}_{groupOverride.RuleGroupName}";
-                            var allManagedRuleNotes = await GetAllNotesInPartitionAsync(managedRulePk);
-                            var managedRuleNotesMap = allManagedRuleNotes.ToDictionary(n => n.RowKey, n => n.NotesContent); // 建立字典以快速查找
-
-
-                            groupDetails.Rules = new List<ManagedRuleOverrideDetails>();
-                            foreach(var r in groupOverride.Rules)
+                            var exclusionDetail = new ExclusionDetails
                             {
-                                var managedRuleOverride = new ManagedRuleOverrideDetails
-                                {
-                                    RuleId = r.RuleId,
-                                    State = r.EnabledState.ToString(),
-                                    ExclustionCount = r.Exclusions?.Count ?? 0, // 新增：計算排除項數量
-                                    Exclusions = r.Exclusions?.Select(e => new ExclusionDetails
-                                        {
-                                            MatchVariable = e.MatchVariable.ToString(),
-                                            SelectorMatchOperator = e.SelectorMatchOperator.ToString(),
-                                            Selector = e.Selector
-                                    }).ToList() ?? new List<ExclusionDetails>()
-                                };
+                                MatchVariable = sdkExclusion.MatchVariable.ToString(),
+                                SelectorMatchOperator = sdkExclusion.SelectorMatchOperator.ToString(),
+                                Selector = sdkExclusion.Selector
+                            };
 
-                                if (managedRuleNotesMap.TryGetValue(r.RuleId, out var notes))
-                                {
-                                    managedRuleOverride.Notes = notes;
-                                }
-
-                                groupDetails.Rules.Add(managedRuleOverride);
+                            string exclusionRk = $"EXC_RULESET_{Uri.EscapeDataString(exclusionDetail.MatchVariable ?? "")}_{Uri.EscapeDataString(exclusionDetail.SelectorMatchOperator ?? "")}_{Uri.EscapeDataString(exclusionDetail.Selector ?? "")}";
+                            if (ruleSetNotesMap.TryGetValue(exclusionRk, out var notes))
+                            {
+                                exclusionDetail.Notes = notes;
                             }
-                        }
 
-                        managedRuleSetDetails.RuleGroupOverrides.Add(groupDetails);
+                            managedRuleSetDetails.Exclusions.Add(exclusionDetail);
+                        }
                     }
+
+                    if (ruleSet.RuleGroupOverrides != null) // 再處理受控規則內的群組
+                    {
+                        managedRuleSetDetails.RuleGroupOverrides = new List<RuleGroupOverrideDetails>();
+
+                        foreach (var groupOverride in ruleSet.RuleGroupOverrides)
+                        {
+                            var groupDetails = new RuleGroupOverrideDetails
+                            {
+                                RuleGroupName = groupOverride.RuleGroupName,
+                                DisabledRules = groupOverride.Rules?.Where(r => r.EnabledState.Equals(Azure.ResourceManager.FrontDoor.Models.ManagedRuleEnabledState.Disabled)).Select(r => r.RuleId).ToList() ?? new List<string>(),
+                            };
+
+                            if (groupOverride.Rules != null)
+                            {
+                                // PartitionKey: PolicyName_RuleSetType_RuleSetVersion_RuleGroupName
+                                // 這個 PartitionKey 現在會用於獲取託管規則本身的備註，以及其下所有排除項的備註。
+                                string managedRuleOrExclusionPk = $"{policy.Name}_{ruleSet.RuleSetType}_{ruleSet.RuleSetVersion}_{groupOverride.RuleGroupName}";
+                                // 重新查詢，或者設計一個更大的查詢來一次性獲取所有層次的備註
+                                // 為了簡化，這裡假設每次批量讀取一個 RuleGroupOverride 的所有備註
+                                var allNotesInManagedRulePartition = await GetAllNotesInPartitionAsync(managedRuleOrExclusionPk);
+                                var managedRuleAndExclusionNotesMap = allNotesInManagedRulePartition.ToDictionary(n => n.RowKey, n => n.NotesContent);
+
+                                groupDetails.Rules = new List<ManagedRuleOverrideDetails>();
+                                foreach (var r in groupOverride.Rules)
+                                {
+                                    var managedRuleOverride = new ManagedRuleOverrideDetails
+                                    {
+                                        RuleId = r.RuleId,
+                                        State = r.EnabledState.ToString(),
+                                        ExclustionCount = r.Exclusions?.Count ?? 0
+                                    };
+
+                                    if (managedRuleAndExclusionNotesMap.TryGetValue(Uri.EscapeDataString(managedRuleOverride.RuleId ?? ""), out var ruleOverrideNotes))
+                                    {
+                                        managedRuleOverride.Notes = ruleOverrideNotes;
+                                    }
+
+                                    if (r.Exclusions != null)
+                                    {
+                                        managedRuleOverride.Exclusions = new List<ExclusionDetails>();
+                                        foreach (var exc in r.Exclusions) // 遍歷每一個 ExclusionDetails
+                                        {
+                                            var exclusionDetail = new ExclusionDetails
+                                            {
+                                                MatchVariable = exc.MatchVariable.ToString(),
+                                                SelectorMatchOperator = exc.SelectorMatchOperator.ToString(),
+                                                Selector = exc.Selector
+                                            };
+
+                                            // 填充 ExclusionDetails 的備註
+                                            // RowKey: EXC_{UrlEncodedMatchVariable}_{UrlEncodedSelectorMatchOperator}_{UrlEncodedSelector} (這裡是 RuleGroupOverride 下的排除項)
+                                            string exclusionRk = $"EXC_{Uri.EscapeDataString(exclusionDetail.MatchVariable ?? "")}_{Uri.EscapeDataString(exclusionDetail.SelectorMatchOperator ?? "")}_{Uri.EscapeDataString(exclusionDetail.Selector ?? "")}";
+
+                                            // 從字典中查找備註
+                                            if (managedRuleAndExclusionNotesMap.TryGetValue(exclusionRk, out var exclusionNotes))
+                                            {
+                                                exclusionDetail.Notes = exclusionNotes;
+                                            }
+
+                                            managedRuleOverride.Exclusions.Add(exclusionDetail);
+                                        }
+                                    }
+
+                                    groupDetails.Rules.Add(managedRuleOverride);
+                                }
+                            }
+
+                            managedRuleSetDetails.RuleGroupOverrides.Add(groupDetails);
+                        }
+                    }
+                    
                     details.ManagedRules.Add(managedRuleSetDetails);
                 }
             }

@@ -194,6 +194,14 @@
             $('#notesCustomRuleName').val(currentEditButton.data('custom-rule-name'));
             $('#notesMatchConditionIndex').val(currentEditButton.data('match-condition-index'));
             $('#notesMatchValue').val(currentEditButton.data('match-value'));
+        } else if (entityType === 'ManagedRuleSetExclusion') {
+            $('#notesModalLabel').text('編輯規則集排除項備註');
+            $('#notesPolicyName').val(currentEditButton.data('policy-name'));
+            $('#notesManagedRuleSetType').val(currentEditButton.data('ruleset-type'));
+            $('#notesManagedRuleSetVersion').val(currentEditButton.data('ruleset-version'));
+            $('#notesMatchVariable').val(currentEditButton.data('match-variable'));
+            $('#notesSelectorMatchOperator').val(currentEditButton.data('selector-match-operator'));
+            $('#notesSelector').val(currentEditButton.data('selector'));
         }
 
         // 設定通用欄位
@@ -248,6 +256,18 @@
             // RowKey: MatchConditionIndex_EncodedMatchValue
             postData.partitionKey = `${postData.wafPolicyName}_${postData.customRuleName}`;
             postData.rowKey = `MC_${postData.matchConditionIndex}_${encodedMatchValue}`;
+        } else if (entityType === 'ManagedRuleSetExclusion') { 
+            postData.wafPolicyName = $('#notesPolicyName').val();
+            postData.managedRuleSetType = $('#notesManagedRuleSetType').val();
+            postData.managedRuleSetVersion = $('#notesManagedRuleSetVersion').val();
+            postData.matchVariable = $('#notesMatchVariable').val();
+            postData.selectorMatchOperator = $('#notesSelectorMatchOperator').val();
+            postData.selector = $('#notesSelector').val();
+
+            // PartitionKey: PolicyName_RuleSetType_RuleSetVersion
+            // RowKey: EXC_RULESET_{UrlEncodedMatchVariable}_{UrlEncodedSelectorMatchOperator}_{UrlEncodedSelector}
+            postData.partitionKey = `${postData.wafPolicyName}_${postData.managedRuleSetType}_${postData.managedRuleSetVersion}`;
+            postData.rowKey = `EXC_RULESET_${encodeURIComponent(postData.matchVariable || '')}_${encodeURIComponent(postData.selectorMatchOperator || '')}_${encodeURIComponent(postData.selector || '')}`;
         }
 
         // 從 currentEditButton 獲取目標元素的 ID

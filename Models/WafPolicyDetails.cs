@@ -85,6 +85,7 @@ namespace AzureFirewallManagerTools.Models
         public string MatchVariable { get; set; } // 匹配變數 (例如："RequestHeaderNames", "RequestBodyPostArgNames")。
         public string SelectorMatchOperator { get; set; } // 選擇器匹配運算子 (例如："Equals", "StartsWith")。
         public string Selector { get; set; } // 選擇器 (例如："CookieName", "ParamName")。
+        public string Notes { get; set; }
 
         // 針對託管規則集的排除。
         public List<ManagedRuleSetExclusionDetails> ManagedRuleSetExclusions { get; set; } = new List<ManagedRuleSetExclusionDetails>();

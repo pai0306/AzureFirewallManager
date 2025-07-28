@@ -121,6 +121,49 @@
                                             {
                                                 <p>無規則群組覆寫。</p>
                                             }
+
+                                            @if (ruleSet.Exclusions.Any())
+                                            {
+                                                <h6 class="mt-3">規則集層級排除項:</h6>
+                                                <ul class="list-unstyled ms-3">
+                                                    @foreach (var exclusion in ruleSet.Exclusions)
+                                                    {
+                                                        <li class="mb-2">
+                                                            <div class="d-flex justify-content-between align-items-center">
+                                                                <span class="me-auto">
+                                                                    變數: <span class="fw-bold">@exclusion.MatchVariable</span>,
+                                                                    操作符: <span class="fw-bold">@exclusion.SelectorMatchOperator</span>,
+                                                                    選擇器: <span class="fw-bold">@exclusion.Selector</span>
+                                                                </span>
+                                                                <span class="badge bg-info ms-2"
+                                                                      id="ruleset-exclusion-notes-badge-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")"
+                                                                      style="@(string.IsNullOrEmpty(exclusion.Notes) ? "display:none;" : "")">備註</span>
+
+                                                                <button class="btn btn-link btn-sm ms-2 edit-notes-btn" 
+                                                                        data-entity-type="ManagedRuleSetExclusion"
+                                                                        data-policy-name="@policy.Name"
+                                                                        data-ruleset-type="@ruleSet.RuleSetType"
+                                                                        data-ruleset-version="@ruleSet.RuleSetVersion"
+                                                                        data-match-variable="@exclusion.MatchVariable"
+                                                                        data-selector-match-operator="@exclusion.SelectorMatchOperator"
+                                                                        data-selector="@exclusion.Selector"
+                                                                        data-current-notes="@exclusion.Notes"
+                                                                        data-target-notes-id="ruleset-exclusion-notes-content-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")"
+                                                                        data-target-container-id="ruleset-exclusion-notes-container-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")"
+                                                                        data-target-badge-id="ruleset-exclusion-notes-badge-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")">
+                                                                    編輯
+                                                                </button>
+                                                            </div>
+                                                            <div id="ruleset-exclusion-notes-container-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")"
+                                                                 class="alert alert-secondary py-1 px-2 mt-1 mb-0 ms-4" role="alert"
+                                                                 style="@(string.IsNullOrEmpty(exclusion.Notes) ? "display:none;" : "")">
+                                                                <small class="text-dark">備註: <span id="ruleset-exclusion-notes-content-@policy.Name.Replace(" ", "-")_@ruleSet.RuleSetType.Replace(" ", "-")_@ruleSet.RuleSetVersion.Replace(".", "-")_@exclusion.MatchVariable.Replace(" ", "-")_@exclusion.SelectorMatchOperator.Replace(" ", "-")_@exclusion.Selector.Replace(" ", "-")">@exclusion.Notes</span></small>
+                                                            </div>
+                                                            <hr class="mt-2 mb-2" />
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
                                         </div>
                                     </div>
                                 </div>
